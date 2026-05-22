@@ -10,6 +10,9 @@
 		5AA827E84EE84040039D3D01 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 5AA827E74EE84040039D3D01 /* main.m */; };
 		060D843A76CF42219DB9A342 /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 060D843976CF42219DB9A342 /* AppDelegate.m */; };
 		89117BDBFBB14E66B0651B6D /* BLEPeripheralController.m in Sources */ = {isa = PBXBuildFile; fileRef = 89117BDAFBB14E66B0651B6D /* BLEPeripheralController.m */; };
+		A10000000000000000000011 /* BLEProtocolConstants.m in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000001 /* BLEProtocolConstants.m */; };
+		A10000000000000000000012 /* BLEProtocolMessage.m in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000003 /* BLEProtocolMessage.m */; };
+		A10000000000000000000013 /* BLEProtocolHandler.m in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000005 /* BLEProtocolHandler.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -20,6 +23,12 @@
 		89117BDAFBB14E66B0651B6D /* BLEPeripheralController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = BLEPeripheralController.m; sourceTree = "<group>"; };
 		89117BDCFBB14E66B0651B6D /* BLEPeripheralController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BLEPeripheralController.h; sourceTree = "<group>"; };
 		A99078829EC24CD79F5C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A10000000000000000000001 /* BLEProtocolConstants.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = BLEProtocolConstants.m; sourceTree = "<group>"; };
+		A10000000000000000000002 /* BLEProtocolConstants.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BLEProtocolConstants.h; sourceTree = "<group>"; };
+		A10000000000000000000003 /* BLEProtocolMessage.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = BLEProtocolMessage.m; sourceTree = "<group>"; };
+		A10000000000000000000004 /* BLEProtocolMessage.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BLEProtocolMessage.h; sourceTree = "<group>"; };
+		A10000000000000000000005 /* BLEProtocolHandler.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = BLEProtocolHandler.m; sourceTree = "<group>"; };
+		A10000000000000000000006 /* BLEProtocolHandler.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BLEProtocolHandler.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -36,6 +45,7 @@
 		E9AF195458F54C2BAE5E8174 = {
 			isa = PBXGroup;
 			children = (
+				A10000000000000000000020 /* BLEProtocol */,
 				9399BB353BBE4C95AF30C9D9 /* BLEPeripheral */,
 				AC7B5D2F1C3C4D60A84AF1ED /* Products */,
 			);
@@ -60,6 +70,20 @@
 				A99078829EC24CD79F5C /* Info.plist */,
 			);
 			path = BLEPeripheral;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000020 /* BLEProtocol */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000002 /* BLEProtocolConstants.h */,
+				A10000000000000000000001 /* BLEProtocolConstants.m */,
+				A10000000000000000000004 /* BLEProtocolMessage.h */,
+				A10000000000000000000003 /* BLEProtocolMessage.m */,
+				A10000000000000000000006 /* BLEProtocolHandler.h */,
+				A10000000000000000000005 /* BLEProtocolHandler.m */,
+			);
+			name = BLEProtocol;
+			path = ../Shared/BLEProtocol;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -133,6 +157,9 @@
 				5AA827E84EE84040039D3D01 /* main.m in Sources */,
 				060D843A76CF42219DB9A342 /* AppDelegate.m in Sources */,
 				89117BDBFBB14E66B0651B6D /* BLEPeripheralController.m in Sources */,
+				A10000000000000000000011 /* BLEProtocolConstants.m in Sources */,
+				A10000000000000000000012 /* BLEProtocolMessage.m in Sources */,
+				A10000000000000000000013 /* BLEProtocolHandler.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -253,10 +280,15 @@
 		BD01848D00034A2595D18C58 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = BLEPeripheral/BLEPeripheral.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/../Shared/BLEProtocol",
+				);
 				INFOPLIST_FILE = BLEPeripheral/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -265,16 +297,22 @@
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.BLEPeripheral;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
 			};
 			name = Debug;
 		};
 		BD01848D00044A2595D18C58 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = BLEPeripheral/BLEPeripheral.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/../Shared/BLEProtocol",
+				);
 				INFOPLIST_FILE = BLEPeripheral/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -283,6 +321,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.BLEPeripheral;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
 			};
 			name = Release;
 		};

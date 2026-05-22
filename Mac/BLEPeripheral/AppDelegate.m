@@ -12,17 +12,27 @@
 @implementation AppDelegate
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
+    [self applyLightAppearance];
+
     [self buildWindow];
 
     __weak typeof(self) weakSelf = self;
     self.peripheralController = [[BLEPeripheralController alloc] initWithLogHandler:^(NSString *message) {
         [weakSelf appendLog:message];
     }];
+    [self appendLog:@"[SYS] Log window ready"];
     [self.peripheralController start];
 }
 
 - (BOOL)applicationSupportsSecureRestorableState:(NSApplication *)app {
     return YES;
+}
+
+- (void)applyLightAppearance {
+    if (@available(macOS 10.14, *)) {
+        NSAppearance *light = [NSAppearance appearanceNamed:NSAppearanceNameAqua];
+        [NSApp setAppearance:light];
+    }
 }
 
 - (void)buildWindow {
@@ -35,15 +45,20 @@
                                                backing:NSBackingStoreBuffered
                                                  defer:NO];
     self.window.title = @"BLE Peripheral Demo";
+    if (@available(macOS 10.14, *)) {
+        self.window.appearance = [NSAppearance appearanceNamed:NSAppearanceNameAqua];
+    }
     [self.window center];
 
     NSView *contentView = self.window.contentView;
+    contentView.wantsLayer = YES;
+    contentView.layer.backgroundColor = NSColor.windowBackgroundColor.CGColor;
 
     NSTextField *titleLabel = [NSTextField labelWithString:@"macOS BLE Peripheral Simulator"];
     titleLabel.font = [NSFont boldSystemFontOfSize:20];
     titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
 
-    NSTextField *infoLabel = [NSTextField labelWithString:@"Device name: MacBLE-Demo | Service: FFF0 | Read/Write/Notify: FFF1"];
+    NSTextField *infoLabel = [NSTextField labelWithString:@"FFF1: 00AA+原内容 | 手机须先开 Notify 才能自动收回复(不必Read)"];
     infoLabel.font = [NSFont systemFontOfSize:13];
     infoLabel.textColor = NSColor.secondaryLabelColor;
     infoLabel.translatesAutoresizingMaskIntoConstraints = NO;
@@ -55,9 +70,16 @@
 
     self.logTextView = [[NSTextView alloc] initWithFrame:NSZeroRect];
     self.logTextView.editable = NO;
+    self.logTextView.selectable = YES;
     self.logTextView.font = [NSFont monospacedSystemFontOfSize:12 weight:NSFontWeightRegular];
-    self.logTextView.textColor = NSColor.labelColor;
-    self.logTextView.backgroundColor = NSColor.textBackgroundColor;
+    self.logTextView.textColor = [NSColor blackColor];
+    self.logTextView.backgroundColor = [NSColor whiteColor];
+    self.logTextView.minSize = NSMakeSize(0, 0);
+    self.logTextView.maxSize = NSMakeSize(CGFLOAT_MAX, CGFLOAT_MAX);
+    self.logTextView.verticallyResizable = YES;
+    self.logTextView.horizontallyResizable = NO;
+    self.logTextView.textContainerInset = NSMakeSize(6, 6);
+    self.logTextView.textContainer.widthTracksTextView = YES;
     scrollView.documentView = self.logTextView;
 
     [contentView addSubview:titleLabel];
@@ -84,15 +106,33 @@
 }
 
 - (void)appendLog:(NSString *)message {
-    dispatch_async(dispatch_get_main_queue(), ^{
+    void (^append)(void) = ^{
+        if (!self.logTextView) {
+            return;
+        }
         NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
         formatter.dateFormat = @"HH:mm:ss";
         NSString *line = [NSString stringWithFormat:@"[%@] %@\n", [formatter stringFromDate:NSDate.date], message];
 
-        NSTextStorage *textStorage = self.logTextView.textStorage;
-        [textStorage appendAttributedString:[[NSAttributedString alloc] initWithString:line]];
-        [self.logTextView scrollRangeToVisible:NSMakeRange(textStorage.length, 0)];
-    });
+        NSDictionary *attributes = @{
+            NSFontAttributeName: self.logTextView.font ?: [NSFont monospacedSystemFontOfSize:12 weight:NSFontWeightRegular],
+            NSForegroundColorAttributeName: [NSColor blackColor],
+        };
+        NSAttributedString *chunk = [[NSAttributedString alloc] initWithString:line attributes:attributes];
+        [[self.logTextView textStorage] appendAttributedString:chunk];
+
+        NSUInteger length = self.logTextView.textStorage.length;
+        if (length > 0) {
+            [self.logTextView scrollRangeToVisible:NSMakeRange(length - 1, 1)];
+        }
+        [self.logTextView setNeedsDisplay:YES];
+    };
+
+    if ([NSThread isMainThread]) {
+        append();
+    } else {
+        dispatch_async(dispatch_get_main_queue(), append);
+    }
 }
 
 @end
