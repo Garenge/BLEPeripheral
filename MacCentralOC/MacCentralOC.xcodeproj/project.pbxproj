@@ -1,0 +1,352 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		5AA827E84EE84040039D3D01 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 5AA827E74EE84040039D3D01 /* main.m */; };
+		060D843A76CF42219DB9A342 /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 060D843976CF42219DB9A342 /* AppDelegate.m */; };
+		89117BDBFBB14E66B0651B6D /* BLECentralController.m in Sources */ = {isa = PBXBuildFile; fileRef = 89117BDAFBB14E66B0651B6D /* BLECentralController.m */; };
+		A10000000000000000000011 /* BLEProtocolConstants.m in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000001 /* BLEProtocolConstants.m */; };
+		A10000000000000000000012 /* BLEProtocolMessage.m in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000003 /* BLEProtocolMessage.m */; };
+		A10000000000000000000013 /* BLEProtocolHandler.m in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000005 /* BLEProtocolHandler.m */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		BD01848DB7D14A2595D18C58 /* MacCentralOC.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MacCentralOC.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5AA827E74EE84040039D3D01 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
+		060D843976CF42219DB9A342 /* AppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
+		060D843B76CF42219DB9A342 /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
+		89117BDAFBB14E66B0651B6D /* BLECentralController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = BLECentralController.m; sourceTree = "<group>"; };
+		89117BDCFBB14E66B0651B6D /* BLECentralController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BLECentralController.h; sourceTree = "<group>"; };
+		A99078829EC24CD79F5C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A10000000000000000000001 /* BLEProtocolConstants.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = BLEProtocolConstants.m; sourceTree = "<group>"; };
+		A10000000000000000000002 /* BLEProtocolConstants.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BLEProtocolConstants.h; sourceTree = "<group>"; };
+		A10000000000000000000003 /* BLEProtocolMessage.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = BLEProtocolMessage.m; sourceTree = "<group>"; };
+		A10000000000000000000004 /* BLEProtocolMessage.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BLEProtocolMessage.h; sourceTree = "<group>"; };
+		A10000000000000000000005 /* BLEProtocolHandler.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = BLEProtocolHandler.m; sourceTree = "<group>"; };
+		A10000000000000000000006 /* BLEProtocolHandler.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BLEProtocolHandler.h; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		4B64A1C7ED78454FB5ADF6DD /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		E9AF195458F54C2BAE5E8174 = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000020 /* BLEProtocol */,
+				9399BB353BBE4C95AF30C9D9 /* MacCentralOC */,
+				AC7B5D2F1C3C4D60A84AF1ED /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		AC7B5D2F1C3C4D60A84AF1ED = {
+			isa = PBXGroup;
+			children = (
+				BD01848DB7D14A2595D18C58 /* MacCentralOC.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		9399BB353BBE4C95AF30C9D9 = {
+			isa = PBXGroup;
+			children = (
+				5AA827E74EE84040039D3D01 /* main.m */,
+				060D843B76CF42219DB9A342 /* AppDelegate.h */,
+				060D843976CF42219DB9A342 /* AppDelegate.m */,
+				89117BDCFBB14E66B0651B6D /* BLECentralController.h */,
+				89117BDAFBB14E66B0651B6D /* BLECentralController.m */,
+				A99078829EC24CD79F5C /* Info.plist */,
+			);
+			path = MacCentralOC;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000020 /* BLEProtocol */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000002 /* BLEProtocolConstants.h */,
+				A10000000000000000000001 /* BLEProtocolConstants.m */,
+				A10000000000000000000004 /* BLEProtocolMessage.h */,
+				A10000000000000000000003 /* BLEProtocolMessage.m */,
+				A10000000000000000000006 /* BLEProtocolHandler.h */,
+				A10000000000000000000005 /* BLEProtocolHandler.m */,
+			);
+			name = BLEProtocol;
+			path = ../Shared/BLEProtocol;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		B0D6505F86194944AECFB204 /* MacCentralOC */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CA0082FD1B354F7A8F759618 /* Build configuration list for PBXNativeTarget "MacCentralOC" */;
+			buildPhases = (
+				FED6FD133D3047258A765252 /* Sources */,
+				4B64A1C7ED78454FB5ADF6DD /* Frameworks */,
+				505BB5411056427B8553AC11 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = MacCentralOC;
+			productName = MacCentralOC;
+			productReference = BD01848DB7D14A2595D18C58 /* MacCentralOC.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		79E3B8E27C5746F7B05D2912 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastUpgradeCheck = 2630;
+				TargetAttributes = {
+					B0D6505F86194944AECFB204 = {
+						CreatedOnToolsVersion = 26.3;
+					};
+				};
+			};
+			buildConfigurationList = 8A8B5CEE787748EF9715B6DB /* Build configuration list for PBXProject "MacCentralOC" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = E9AF195458F54C2BAE5E8174;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = AC7B5D2F1C3C4D60A84AF1ED /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				B0D6505F86194944AECFB204 /* MacCentralOC */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		505BB5411056427B8553AC11 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		FED6FD133D3047258A765252 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5AA827E84EE84040039D3D01 /* main.m in Sources */,
+				060D843A76CF42219DB9A342 /* AppDelegate.m in Sources */,
+				89117BDBFBB14E66B0651B6D /* BLECentralController.m in Sources */,
+				A10000000000000000000011 /* BLEProtocolConstants.m in Sources */,
+				A10000000000000000000012 /* BLEProtocolMessage.m in Sources */,
+				A10000000000000000000013 /* BLEProtocolHandler.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		BD01848D00014A2595D18C58 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		BD01848D00024A2595D18C58 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		BD01848D00034A2595D18C58 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = MacCentralOC/MacCentralOC.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/../Shared/BLEProtocol",
+				);
+				INFOPLIST_FILE = MacCentralOC/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.MacCentralOC;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		BD01848D00044A2595D18C58 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = MacCentralOC/MacCentralOC.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/../Shared/BLEProtocol",
+				);
+				INFOPLIST_FILE = MacCentralOC/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.MacCentralOC;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		8A8B5CEE787748EF9715B6DB /* Build configuration list for PBXProject "MacCentralOC" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BD01848D00014A2595D18C58 /* Debug */,
+				BD01848D00024A2595D18C58 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CA0082FD1B354F7A8F759618 /* Build configuration list for PBXNativeTarget "MacCentralOC" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BD01848D00034A2595D18C58 /* Debug */,
+				BD01848D00044A2595D18C58 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 79E3B8E27C5746F7B05D2912 /* Project object */;
+}
