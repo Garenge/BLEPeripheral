@@ -1,4 +1,4 @@
-# iOS BLE Central
+# iOSCentralOC BLE Central
 
 iPhone app that scans for service `FFF0`, connects to `MacBLE-Demo`, and sends JSON protocol commands.
 

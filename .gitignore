@@ -1,6 +1,13 @@
 build/
-Mac/build/
-iOS/build/
+MacPeripheralOC/build/
+iOSCentralOC/build/
+MacCentralOC/build/
+FlutterCentral/build/
+FlutterCentral/.dart_tool/
+FlutterCentral/.flutter-plugins
+FlutterCentral/.flutter-plugins-dependencies
+FlutterCentral/macos/Flutter/ephemeral/
+FlutterCentral/macos/Pods/
 DerivedData/
 *.xcuserstate
 xcuserdata/

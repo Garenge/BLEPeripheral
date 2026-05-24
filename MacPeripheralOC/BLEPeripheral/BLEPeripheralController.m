@@ -34,7 +34,7 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
     self = [super init];
     if (self) {
         _logHandler = [logHandler copy];
-        _currentValue = [self echoReplyDataForIncoming:NSData.data];
+        _currentValue = [[self echoReplyDataForIncoming:NSData.data] mutableCopy];
         _trackedCentrals = [NSMutableDictionary dictionary];
     }
     return self;
@@ -46,7 +46,7 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
     self.peripheralManager = [[CBPeripheralManager alloc] initWithDelegate:self
                                                                        queue:queue
                                                                      options:options];
-    [self logEvent:@"SYS" detail:@"Mac/BLEPeripheral/BLEPeripheralController.m#start: CBPeripheralManager on main queue"];
+    [self logEvent:@"SYS" detail:@"MacPeripheralOC/BLEPeripheral/BLEPeripheralController.m#start: CBPeripheralManager on main queue"];
     [self logProfileSummary];
 }
 
