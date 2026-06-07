@@ -279,6 +279,7 @@ static NSString * const kCharacteristicUUIDString = @"0000FFF1-0000-1000-8000-00
             [self setNotifyEnabled:YES];
             [self readValue];
             [self sendPairCode:BLEProtocolDefaultPairCode];
+            [self sendProtocolGetInfo];
             [self notifyStateChanged];
             return;
         }
@@ -359,10 +360,13 @@ static NSString * const kCharacteristicUUIDString = @"0000FFF1-0000-1000-8000-00
     if (body.count == 0) {
         return;
     }
+    NSString *operation = message[BLEProtocolKeyOperation] ?: @"?";
+    if ([operation isEqualToString:BLEProtocolOpInfo]) {
+        [self logEvent:@"CAP" detail:[BLEProtocolMessage capabilitySummaryForInfoBody:body]];
+    }
     NSError *error = nil;
     NSData *bodyData = [NSJSONSerialization dataWithJSONObject:body options:0 error:&error];
     NSString *bodyText = [[NSString alloc] initWithData:bodyData encoding:NSUTF8StringEncoding] ?: @"{}";
-    NSString *operation = message[BLEProtocolKeyOperation] ?: @"?";
     NSString *category = [operation isEqualToString:BLEProtocolOpEvent] ? @"EVT" : @"RX";
     [self logEvent:category detail:[NSString stringWithFormat:@"body=%@", bodyText]];
 }

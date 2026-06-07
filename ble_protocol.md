@@ -27,6 +27,7 @@ This is a learning/demo security layer, not production cryptography.
 
 - Default pair code: `135790`
 - First-party clients auto-send `pair` after FFF1 notify is enabled.
+- First-party clients auto-send `getInfo` during connection setup to discover capabilities.
 - `pair` returns a session `token` in both the top-level envelope and `body.token`.
 - Protected operations must include that `token`.
 - `ping` and `getInfo` stay open for diagnostics.
@@ -77,7 +78,7 @@ Error response:
 |----------------|-----------------|------------------|-------------------|
 | `pair` | `paired` | `code` string | `session`, `token`, `expires` |
 | `ping` | `pong` | optional | `ts` (unix seconds), `platform`, `session` |
-| `getInfo` | `info` | optional | `name`, `serviceUUID`, `characteristicUUID`, `protocolVersion`, `pairing`, `session`, `requiresToken` |
+| `getInfo` | `info` | optional | GATT/profile metadata plus `capabilitySchema`, `operations`, `commands`, `events`, `eventRules`, `security`, `transport` |
 | `echo` | `echo` | `text` string, requires token | same `text` |
 | `telemetry` | `telemetry` | optional, requires token | session-scoped `reads`, `writes`, `notifies`, `events`, `ts` |
 | `command` | `commandResult` | `name` string, requires token | `name`, `accepted`, `session`, `queuedEvent`, `message` |
@@ -100,6 +101,22 @@ Server may also push `event` notifications (no request), with:
 ```
 
 Event types currently include `subscribed`, `paired`, `write`, `command.identify`, `command.sample`, and `command.resetCounters`.
+
+## Capability Discovery
+
+`getInfo` is intentionally open so scanner tools and first-party clients can learn the profile before pairing. The `info.body` capability fields are:
+
+| field | meaning |
+|-------|---------|
+| `capabilitySchema` | Discovery schema identifier, currently `ble-demo.capabilities.v1` |
+| `operations.open` | Operations accepted without a token: `pair`, `ping`, `getInfo` |
+| `operations.protected` | Operations requiring a token: `echo`, `telemetry`, `command` |
+| `operations.responses` | Request-to-response operation map |
+| `commands` | Supported demo command descriptors with emitted event type |
+| `events` | Server event descriptors and triggers |
+| `eventRules` | Human-readable event association rules |
+| `security` | Pairing/token placement and scope hints |
+| `transport` | Scan/write/notify/read behavior and legacy fallback |
 
 Supported demo commands:
 

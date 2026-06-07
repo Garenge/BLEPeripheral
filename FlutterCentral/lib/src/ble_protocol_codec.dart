@@ -67,6 +67,20 @@ class BleProtocolCodec {
     return 'op=$operation id=$id token=$hasToken ok=${envelope['ok']}';
   }
 
+  String capabilitySummaryForInfoBody(Map<dynamic, dynamic> body) {
+    final operations = body['operations'];
+    final protectedOperations = operations is Map
+        ? _stringList(operations['protected'])
+        : const <String>[];
+    final commands = _commandNames(body['commands']);
+    final events = body['events'] is List ? body['events'] as List : const [];
+    final schema = body['capabilitySchema'] is String
+        ? body['capabilitySchema']
+        : 'unknown';
+
+    return 'capabilities schema=$schema protected=${protectedOperations.join(",")} commands=${commands.join(",")} events=${events.length}';
+  }
+
   bool _isEchoReply(List<int> value) {
     return value.length >= 2 && value[0] == 0x00 && value[1] == 0xAA;
   }
@@ -78,6 +92,25 @@ class BleProtocolCodec {
     } catch (_) {
       return null;
     }
+  }
+
+  List<String> _commandNames(Object? commands) {
+    if (commands is! List) {
+      return const [];
+    }
+    return commands
+        .whereType<Map>()
+        .map((command) => command['name'])
+        .whereType<String>()
+        .where((name) => name.isNotEmpty)
+        .toList();
+  }
+
+  List<String> _stringList(Object? value) {
+    if (value is! List) {
+      return const [];
+    }
+    return value.whereType<String>().where((item) => item.isNotEmpty).toList();
   }
 
   String _decodeText(List<int> value) {

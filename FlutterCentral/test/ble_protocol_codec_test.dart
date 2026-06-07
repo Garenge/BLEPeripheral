@@ -55,6 +55,29 @@ void main() {
     );
   });
 
+  test('summarizes info capability bodies', () {
+    final summary = codec.capabilitySummaryForInfoBody({
+      'capabilitySchema': 'ble-demo.capabilities.v1',
+      'operations': {
+        'protected': ['echo', 'telemetry', 'command'],
+      },
+      'commands': [
+        {'name': 'identify'},
+        {'name': 'sample'},
+        {'name': 'resetCounters'},
+      ],
+      'events': [
+        {'type': 'subscribed'},
+        {'type': 'paired'},
+      ],
+    });
+
+    expect(
+      summary,
+      'capabilities schema=ble-demo.capabilities.v1 protected=echo,telemetry,command commands=identify,sample,resetCounters events=2',
+    );
+  });
+
   test('decodes legacy echo payloads', () {
     final decoded = codec.decode([0x00, 0xAA, ...utf8.encode('raw')]);
 

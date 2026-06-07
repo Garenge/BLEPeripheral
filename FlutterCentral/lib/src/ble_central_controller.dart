@@ -51,6 +51,7 @@ class BleCentralController extends ChangeNotifier {
   bool notifyEnabled = false;
   int _protocolSequence = 0;
   String? sessionToken;
+  String? capabilitySummary;
 
   List<DiscoveredBleDevice> get devices => _devicesById.values.toList();
 
@@ -63,7 +64,10 @@ class BleCentralController extends ChangeNotifier {
     }
     final name = _deviceName(device);
     final auth = sessionToken == null ? 'unpaired' : 'paired';
-    return '$name ${notifyEnabled ? "Notify ON" : "Notify OFF"} $auth';
+    final capabilities = capabilitySummary == null
+        ? ''
+        : ' | $capabilitySummary';
+    return '$name ${notifyEnabled ? "Notify ON" : "Notify OFF"} $auth$capabilities';
   }
 
   Future<void> startScan() async {
@@ -267,6 +271,7 @@ class BleCentralController extends ChangeNotifier {
     await setNotify(true);
     await readValue();
     await sendPairCode(bleDefaultPairCode);
+    await sendInfo();
     notifyListeners();
   }
 
@@ -275,6 +280,7 @@ class BleCentralController extends ChangeNotifier {
     demoCharacteristic = null;
     notifyEnabled = false;
     sessionToken = null;
+    capabilitySummary = null;
     notifyListeners();
   }
 
@@ -292,6 +298,7 @@ class BleCentralController extends ChangeNotifier {
       final operation = envelope['op'];
       _log('$label protocol: ${_protocolCodec.summaryForProtocol(envelope)}');
       if (envelope['body'] is Map) {
+        _captureCapabilities(operation, envelope['body'] as Map);
         _log(
           '${operation == "event" ? "EVT" : "RX"} body=${jsonEncode(envelope['body'])}',
         );
@@ -307,6 +314,16 @@ class BleCentralController extends ChangeNotifier {
       _log('AUTH token captured: $token');
       notifyListeners();
     }
+  }
+
+  void _captureCapabilities(Object? operation, Map<dynamic, dynamic> body) {
+    if (operation != 'info') {
+      return;
+    }
+    final summary = _protocolCodec.capabilitySummaryForInfoBody(body);
+    capabilitySummary = summary;
+    _log('CAP $summary');
+    notifyListeners();
   }
 
   String _resultName(ScanResult result) {

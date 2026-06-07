@@ -36,6 +36,7 @@ NS_ASSUME_NONNULL_BEGIN
                            body:(NSDictionary *)body;
 
 + (NSString *)summaryForDictionary:(NSDictionary *)dictionary;
++ (NSString *)capabilitySummaryForInfoBody:(NSDictionary *)body;
 
 @end
 

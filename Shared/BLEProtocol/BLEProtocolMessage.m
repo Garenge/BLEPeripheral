@@ -147,4 +147,32 @@
             ok ?: @"-"];
 }
 
++ (NSString *)capabilitySummaryForInfoBody:(NSDictionary *)body {
+    NSDictionary *operations = [body[@"operations"] isKindOfClass:[NSDictionary class]] ? body[@"operations"] : @{};
+    NSArray *protectedOperations = [operations[@"protected"] isKindOfClass:[NSArray class]] ? operations[@"protected"] : @[];
+    NSArray *commands = [body[@"commands"] isKindOfClass:[NSArray class]] ? body[@"commands"] : @[];
+    NSArray *events = [body[@"events"] isKindOfClass:[NSArray class]] ? body[@"events"] : @[];
+    NSString *schema = [body[@"capabilitySchema"] isKindOfClass:[NSString class]] ? body[@"capabilitySchema"] : @"unknown";
+
+    return [NSString stringWithFormat:@"capabilities schema=%@ protected=%@ commands=%@ events=%lu",
+            schema,
+            [protectedOperations componentsJoinedByString:@","],
+            [[self commandNamesFromDescriptors:commands] componentsJoinedByString:@","],
+            (unsigned long)events.count];
+}
+
++ (NSArray<NSString *> *)commandNamesFromDescriptors:(NSArray *)commands {
+    NSMutableArray<NSString *> *names = [NSMutableArray array];
+    for (id command in commands) {
+        if (![command isKindOfClass:[NSDictionary class]]) {
+            continue;
+        }
+        NSString *name = command[@"name"];
+        if ([name isKindOfClass:[NSString class]] && name.length > 0) {
+            [names addObject:name];
+        }
+    }
+    return names.copy;
+}
+
 @end

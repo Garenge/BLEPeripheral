@@ -83,6 +83,27 @@ static void TestEchoWithToken(void) {
     AssertTrue([response[BLEProtocolKeyBody][@"text"] isEqualToString:@"hello"], @"echo response body text matches");
 }
 
+static void TestInfoCapabilityDiscovery(void) {
+    NSData *request = DataForRequest(BLEProtocolOpGetInfo, @"info-1", nil, @{});
+    BLEProtocolHandlerResult *result = HandleRequest(request, nil, 1, 2, 3, 4);
+    NSDictionary *response = EnvelopeFromData(result.responseData);
+    NSDictionary *body = response[BLEProtocolKeyBody];
+    NSDictionary *operations = body[@"operations"];
+    NSDictionary *security = body[@"security"];
+    NSArray *commands = body[@"commands"];
+    NSArray *events = body[@"events"];
+    NSString *summary = [BLEProtocolMessage capabilitySummaryForInfoBody:body];
+
+    AssertTrue([response[BLEProtocolKeyOperation] isEqualToString:BLEProtocolOpInfo], @"getInfo returns info");
+    AssertTrue([body[@"capabilitySchema"] isEqualToString:@"ble-demo.capabilities.v1"], @"info includes capability schema");
+    AssertTrue([operations[@"open"] containsObject:BLEProtocolOpGetInfo], @"info marks getInfo as open");
+    AssertTrue([operations[@"protected"] containsObject:BLEProtocolOpCommand], @"info marks command as protected");
+    AssertTrue([security[@"tokenAcceptedIn"] containsObject:@"body.token"], @"info documents body token fallback");
+    AssertTrue(commands.count == 3, @"info lists demo commands");
+    AssertTrue(events.count >= 6, @"info lists event types");
+    AssertTrue([summary containsString:@"commands=identify,sample,resetCounters"], @"capability summary lists command names");
+}
+
 static void TestCommandMetadata(void) {
     NSString *token = @"tok-test";
     NSData *request = DataForRequest(BLEProtocolOpCommand, @"cmd-1", token, @{ @"name": @"resetCounters" });
@@ -113,6 +134,7 @@ int main(int argc, const char * argv[]) {
         TestPairSuccess();
         TestProtectedOperationRequiresToken();
         TestEchoWithToken();
+        TestInfoCapabilityDiscovery();
         TestCommandMetadata();
         TestCommandMissingName();
         if (gFailureCount > 0) {

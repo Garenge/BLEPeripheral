@@ -136,7 +136,7 @@ Core Central sequence:
 
 First-party protocol sequence:
 
-`scan` → `connect` → `discover FFF0/FFF1` → `notify on` → `pair(code=135790)` → `token` → protected `echo` / `telemetry` / `command` → `event` notifications
+`scan` → `connect` → `discover FFF0/FFF1` → `notify on` → `pair(code=135790)` + `getInfo` → `token` + capabilities → protected `echo` / `telemetry` / `command` → `event` notifications
 
 Demo commands: `identify`, `sample`, `resetCounters`.
 
@@ -146,7 +146,7 @@ Demo commands: `identify`, `sample`, `resetCounters`.
 |-----------|---------------|----------------|-----------------|
 | Pair | Write + Notify/Read | No | `paired` response with session token, then `event.type=paired` |
 | Ping | Write + Notify/Read | No | `pong` response for diagnostics |
-| Info | Write + Notify/Read | No | `info` response with GATT/profile metadata |
+| Info | Write + Notify/Read | No | `info` response with GATT/profile metadata, operation groups, command catalog, event rules, and transport/security hints |
 | Echo | Write + Notify/Read | Yes | `echo` response with same text |
 | Telemetry | Write + Notify/Read | Yes | Session read/write/notify/event counters |
 | Command `identify` | Write + Notify | Yes | `commandResult`, then `event.type=command.identify` |

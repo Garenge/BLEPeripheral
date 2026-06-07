@@ -93,15 +93,10 @@
         response = [BLEProtocolMessage successResponseForOperation:BLEProtocolOpInfo
                                                          messageID:messageID
                                                              token:currentToken
-                                                              body:@{
-            @"name": peripheralName ?: @"",
-            @"serviceUUID": serviceUUID ?: @"",
-            @"characteristicUUID": characteristicUUID ?: @"",
-            @"protocolVersion": @(BLEProtocolVersion),
-            @"pairing": @"pair-code",
-            @"session": sessionID ?: @"",
-            @"requiresToken": @YES,
-        }];
+                                                              body:[self infoResponseBodyWithPeripheralName:peripheralName
+                                                                                                serviceUUID:serviceUUID
+                                                                                         characteristicUUID:characteristicUUID
+                                                                                                  sessionID:sessionID]];
     } else if ([operation isEqualToString:BLEProtocolOpTelemetry]) {
         response = [BLEProtocolMessage successResponseForOperation:BLEProtocolOpTelemetry
                                                          messageID:messageID
@@ -258,13 +253,127 @@
     };
 }
 
-+ (BOOL)operationRequiresToken:(NSString *)operation {
-    NSSet<NSString *> *openOperations = [NSSet setWithObjects:
++ (NSDictionary *)infoResponseBodyWithPeripheralName:(NSString *)peripheralName
+                                         serviceUUID:(NSString *)serviceUUID
+                                  characteristicUUID:(NSString *)characteristicUUID
+                                           sessionID:(NSString *)sessionID {
+    return @{
+        @"name": peripheralName ?: @"",
+        @"serviceUUID": serviceUUID ?: @"",
+        @"characteristicUUID": characteristicUUID ?: @"",
+        @"protocolVersion": @(BLEProtocolVersion),
+        @"pairing": @"pair-code",
+        @"session": sessionID ?: @"",
+        @"requiresToken": @YES,
+        @"capabilitySchema": @"ble-demo.capabilities.v1",
+        @"security": @{
+            @"openOperations": [self openOperationNames],
+            @"protectedOperations": [self protectedOperationNames],
+            @"tokenAcceptedIn": @[ @"token", @"body.token" ],
+            @"tokenScope": @"current peripheral runtime and central session",
+        },
+        @"operations": @{
+            @"open": [self openOperationNames],
+            @"protected": [self protectedOperationNames],
+            @"responses": [self operationResponseNames],
+        },
+        @"commands": [self commandDescriptors],
+        @"events": [self eventDescriptors],
+        @"eventRules": [self eventRuleDescriptors],
+        @"transport": @{
+            @"scanFilter": @"service FFF0, optional local name MacBLE-Demo",
+            @"requestWrite": @"writeWithResponse preferred; writeWithoutResponse accepted",
+            @"responseDelivery": @"notify when subscribed; read FFF1 for latest value",
+            @"legacyMode": @"non-protocol writes echo as 00AA plus payload",
+        },
+    };
+}
+
++ (NSArray<NSString *> *)openOperationNames {
+    return @[
         BLEProtocolOpPair,
         BLEProtocolOpPing,
         BLEProtocolOpGetInfo,
-        nil
     ];
+}
+
++ (NSArray<NSString *> *)protectedOperationNames {
+    return @[
+        BLEProtocolOpEcho,
+        BLEProtocolOpTelemetry,
+        BLEProtocolOpCommand,
+    ];
+}
+
++ (NSDictionary *)operationResponseNames {
+    return @{
+        BLEProtocolOpPair: BLEProtocolOpPaired,
+        BLEProtocolOpPing: BLEProtocolOpPong,
+        BLEProtocolOpGetInfo: BLEProtocolOpInfo,
+        BLEProtocolOpEcho: BLEProtocolOpEcho,
+        BLEProtocolOpTelemetry: BLEProtocolOpTelemetry,
+        BLEProtocolOpCommand: BLEProtocolOpCommandResult,
+    };
+}
+
++ (NSArray<NSDictionary *> *)commandDescriptors {
+    return @[
+        @{
+            @"name": @"identify",
+            @"effect": @"push identify event",
+            @"emits": @"command.identify",
+        },
+        @{
+            @"name": @"sample",
+            @"effect": @"push sample telemetry event",
+            @"emits": @"command.sample",
+        },
+        @{
+            @"name": @"resetCounters",
+            @"effect": @"reset session counters",
+            @"emits": @"command.resetCounters",
+        },
+    ];
+}
+
++ (NSArray<NSDictionary *> *)eventDescriptors {
+    return @[
+        @{ @"type": @"subscribed", @"trigger": @"notify enabled" },
+        @{ @"type": @"paired", @"trigger": @"pair success" },
+        @{ @"type": @"write", @"trigger": @"protocol or legacy write" },
+        @{ @"type": @"command.identify", @"trigger": @"command identify" },
+        @{ @"type": @"command.sample", @"trigger": @"command sample" },
+        @{ @"type": @"command.resetCounters", @"trigger": @"command resetCounters" },
+    ];
+}
+
++ (NSArray<NSDictionary *> *)eventRuleDescriptors {
+    return @[
+        @{
+            @"when": @"central subscribes to notify",
+            @"then": @"event.subscribed",
+            @"delivery": @"notify",
+        },
+        @{
+            @"when": @"pair code matches",
+            @"then": @"event.paired and session token",
+            @"delivery": @"notify/read",
+        },
+        @{
+            @"when": @"write request is accepted",
+            @"then": @"event.write",
+            @"delivery": @"notify",
+        },
+        @{
+            @"when": @"accepted command is processed",
+            @"then": @"command-specific event",
+            @"delivery": @"notify",
+        },
+    ];
+}
+
++ (BOOL)operationRequiresToken:(NSString *)operation {
+    NSSet<NSString *> *openOperations = [NSSet setWithArray:[self openOperationNames]];
     return ![openOperations containsObject:operation ?: @""];
 }
 
