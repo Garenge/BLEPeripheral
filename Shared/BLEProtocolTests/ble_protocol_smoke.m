@@ -37,6 +37,35 @@ static NSDictionary *EnvelopeFromData(NSData *data) {
     return envelope ?: @{};
 }
 
+static NSArray *FixturePayloads(void) {
+    NSString *path = [NSProcessInfo.processInfo.environment objectForKey:@"BLE_PAYLOAD_FIXTURES"];
+    AssertTrue(path.length > 0, @"fixture path environment is set");
+    NSData *data = path.length > 0 ? [NSData dataWithContentsOfFile:path] : nil;
+    AssertTrue(data != nil, @"fixture file loads");
+    NSError *error = nil;
+    NSDictionary *root = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:&error] : nil;
+    NSArray *payloads = [root[@"payloads"] isKindOfClass:[NSArray class]] ? root[@"payloads"] : @[];
+    AssertTrue(payloads.count > 0, @"fixture payloads load");
+    return payloads;
+}
+
+static NSDictionary *FixtureNamed(NSArray *payloads, NSString *name) {
+    for (NSDictionary *payload in payloads) {
+        if ([payload[@"name"] isEqualToString:name]) {
+            return payload;
+        }
+    }
+    AssertTrue(NO, [NSString stringWithFormat:@"fixture %@ exists", name]);
+    return @{};
+}
+
+static NSData *FixtureData(NSDictionary *fixture) {
+    NSString *base64 = [fixture[@"base64"] isKindOfClass:[NSString class]] ? fixture[@"base64"] : @"";
+    NSData *data = [[NSData alloc] initWithBase64EncodedString:base64 options:0];
+    AssertTrue(data != nil, [NSString stringWithFormat:@"fixture %@ base64 decodes", fixture[@"name"] ?: @"?"]);
+    return data ?: NSData.data;
+}
+
 static BLEProtocolHandlerResult *HandleRequest(NSData *requestData, NSString *currentToken, NSUInteger reads, NSUInteger writes, NSUInteger notifies, NSUInteger events) {
     return [BLEProtocolHandler responseForRequestData:requestData
                                       peripheralName:kPeripheralName
@@ -197,6 +226,39 @@ static void TestChunkEnvelopeRoundTrip(void) {
     AssertTrue([decodedPayload isEqualToData:payload], @"chunk payload round trips");
 }
 
+static void TestRecordedPayloadFixtures(void) {
+    NSArray *payloads = FixturePayloads();
+    NSDictionary *legacyFixture = FixtureNamed(payloads, @"legacy_echo");
+    NSData *legacyData = FixtureData(legacyFixture);
+    AssertTrue(legacyData.length >= 2, @"legacy fixture has prefix bytes");
+    const uint8_t *legacyBytes = legacyData.bytes;
+    AssertTrue(legacyBytes[0] == 0x00 && legacyBytes[1] == 0xAA, @"legacy fixture prefix is 00AA");
+
+    NSDictionary *paired = EnvelopeFromData(FixtureData(FixtureNamed(payloads, @"paired_response")));
+    AssertTrue([paired[BLEProtocolKeyOperation] isEqualToString:BLEProtocolOpPaired], @"paired fixture operation");
+    AssertTrue([paired[BLEProtocolKeyToken] isEqualToString:@"tok-fixture"], @"paired fixture token");
+
+    NSDictionary *echo = EnvelopeFromData(FixtureData(FixtureNamed(payloads, @"echo_response")));
+    AssertTrue([echo[BLEProtocolKeyOperation] isEqualToString:BLEProtocolOpEcho], @"echo fixture operation");
+    AssertTrue([echo[BLEProtocolKeyBody][@"text"] isEqualToString:@"hello chunk fixture"], @"echo fixture text");
+
+    NSDictionary *chunk0 = EnvelopeFromData(FixtureData(FixtureNamed(payloads, @"echo_chunk_0")));
+    NSDictionary *chunk1 = EnvelopeFromData(FixtureData(FixtureNamed(payloads, @"echo_chunk_1")));
+    NSString *stream0 = nil;
+    NSString *stream1 = nil;
+    NSUInteger index0 = 0;
+    NSUInteger index1 = 0;
+    NSUInteger count0 = 0;
+    NSUInteger count1 = 0;
+    NSData *part0 = [BLEProtocolMessage chunkPayloadFromEnvelope:chunk0 streamID:&stream0 index:&index0 count:&count0];
+    NSData *part1 = [BLEProtocolMessage chunkPayloadFromEnvelope:chunk1 streamID:&stream1 index:&index1 count:&count1];
+    NSMutableData *complete = [NSMutableData dataWithData:part0 ?: NSData.data];
+    [complete appendData:part1 ?: NSData.data];
+    AssertTrue([stream0 isEqualToString:stream1], @"chunk fixtures share stream");
+    AssertTrue(index0 == 0 && index1 == 1 && count0 == 2 && count1 == 2, @"chunk fixture indexes and count");
+    AssertTrue([complete isEqualToData:FixtureData(FixtureNamed(payloads, @"echo_response"))], @"chunk fixtures reassemble echo fixture");
+}
+
 int main(int argc, const char * argv[]) {
     @autoreleasepool {
         NSLog(@"BLEProtocol smoke tests starting");
@@ -209,6 +271,7 @@ int main(int argc, const char * argv[]) {
         TestSetEventRuleRejectsInvalidMode();
         TestCommandMissingName();
         TestChunkEnvelopeRoundTrip();
+        TestRecordedPayloadFixtures();
         if (gFailureCount > 0) {
             NSLog(@"BLEProtocol smoke tests failed: %lu", (unsigned long)gFailureCount);
             return 1;

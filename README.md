@@ -49,6 +49,7 @@ Implemented:
 - GATT service `FFF0`, characteristic `FFF1` (`read` / `write` / `notify`)
 - Protocol: `pair`, `ping`, `getInfo`, `echo`, `telemetry`, `command`, server `event`; legacy raw writes
 - Notify queue with MTU-aware `op=chunk` splitting and automatic reassembly in Mac/iOS/Flutter Central clients
+- Recorded BLE payload fixtures shared by Objective-C and Flutter protocol tests
 
 See [ble_protocol.md](ble_protocol.md) for message format.
 
@@ -160,4 +161,4 @@ Demo commands: `identify`, `sample`, `resetCounters`, `setEventRule`.
 ## Next Work
 
 - Configurable profile + persistence
-- Broader integration tests with recorded BLE payload fixtures
+- Real-device BLE integration script/checklist for Mac peripheral + iPhone/Flutter clients

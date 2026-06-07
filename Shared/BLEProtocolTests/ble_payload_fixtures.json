@@ -1,0 +1,41 @@
+{
+  "description": "Recorded BLE payload samples shared by Objective-C and Flutter protocol tests.",
+  "payloads": [
+    {
+      "name": "legacy_echo",
+      "kind": "legacyEcho",
+      "base64": "AKpyYXcgZml4dHVyZQ=="
+    },
+    {
+      "name": "paired_response",
+      "kind": "protocol",
+      "operation": "paired",
+      "token": "tok-fixture",
+      "base64": "eyJ2IjoxLCJvcCI6InBhaXJlZCIsImlkIjoicGFpci1maXh0dXJlIiwib2siOnRydWUsInRva2VuIjoidG9rLWZpeHR1cmUiLCJib2R5Ijp7InNlc3Npb24iOiJtYWMtZml4dHVyZSIsInRva2VuIjoidG9rLWZpeHR1cmUiLCJleHBpcmVzIjoiZml4dHVyZSJ9fQ=="
+    },
+    {
+      "name": "echo_response",
+      "kind": "protocol",
+      "operation": "echo",
+      "text": "hello chunk fixture",
+      "base64": "eyJ2IjoxLCJvcCI6ImVjaG8iLCJpZCI6ImVjaG8tZml4dHVyZSIsIm9rIjp0cnVlLCJ0b2tlbiI6InRvay1maXh0dXJlIiwiYm9keSI6eyJ0ZXh0IjoiaGVsbG8gY2h1bmsgZml4dHVyZSJ9fQ=="
+    },
+    {
+      "name": "echo_chunk_0",
+      "kind": "chunk",
+      "stream": "stream-fixture-1",
+      "index": 0,
+      "count": 2,
+      "base64": "eyJ2IjoxLCJvcCI6ImNodW5rIiwiaWQiOiJjaHVuay1zdHJlYW0tZml4dHVyZS0xLTAiLCJvayI6dHJ1ZSwiYm9keSI6eyJzdHJlYW0iOiJzdHJlYW0tZml4dHVyZS0xIiwiaW5kZXgiOjAsImNvdW50IjoyLCJlbmNvZGluZyI6ImJhc2U2NCIsImRhdGEiOiJleUoySWpveExDSnZjQ0k2SW1WamFHOGlMQ0pwWkNJNkltVmphRzh0Wm1sNGRIVnlaU0lzSW05cklqcDBjblZsTENKMGIydGxiZz09In19"
+    },
+    {
+      "name": "echo_chunk_1",
+      "kind": "chunk",
+      "stream": "stream-fixture-1",
+      "index": 1,
+      "count": 2,
+      "reassemblesTo": "echo_response",
+      "base64": "eyJ2IjoxLCJvcCI6ImNodW5rIiwiaWQiOiJjaHVuay1zdHJlYW0tZml4dHVyZS0xLTEiLCJvayI6dHJ1ZSwiYm9keSI6eyJzdHJlYW0iOiJzdHJlYW0tZml4dHVyZS0xIiwiaW5kZXgiOjEsImNvdW50IjoyLCJlbmNvZGluZyI6ImJhc2U2NCIsImRhdGEiOiJJam9pZEc5ckxXWnBlSFIxY21VaUxDSmliMlI1SWpwN0luUmxlSFFpT2lKb1pXeHNieUJqYUhWdWF5Qm1hWGgwZFhKbEluMTkifX0="
+    }
+  ]
+}

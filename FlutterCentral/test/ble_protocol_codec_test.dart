@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -6,6 +7,7 @@ import 'package:flutter_central/src/ble_protocol_codec.dart';
 
 void main() {
   const codec = BleProtocolCodec();
+  final fixtures = BlePayloadFixtures.load();
 
   test('encodes token protected requests', () {
     final bytes = codec.encodeRequest(
@@ -141,4 +143,67 @@ void main() {
     expect(decoded.kind, BleDecodedMessageKind.raw);
     expect(decoded.text, 'plain text');
   });
+
+  test('decodes recorded payload fixtures', () {
+    final legacy = codec.decode(fixtures.bytes('legacy_echo'));
+    expect(legacy.kind, BleDecodedMessageKind.legacyEcho);
+    expect(legacy.text, 'raw fixture');
+
+    final paired = codec.decode(fixtures.bytes('paired_response'));
+    expect(paired.kind, BleDecodedMessageKind.protocol);
+    expect(paired.envelope!['op'], 'paired');
+    expect(paired.token, 'tok-fixture');
+
+    final echo = codec.decode(fixtures.bytes('echo_response'));
+    expect(echo.kind, BleDecodedMessageKind.protocol);
+    expect(echo.envelope!['body']['text'], 'hello chunk fixture');
+  });
+
+  test('reassembles recorded chunk fixtures', () {
+    final firstEnvelope = codec
+        .decode(fixtures.bytes('echo_chunk_0'))
+        .envelope!;
+    final secondEnvelope = codec
+        .decode(fixtures.bytes('echo_chunk_1'))
+        .envelope!;
+    final first = codec.chunkFragmentFromEnvelope(firstEnvelope)!;
+    final second = codec.chunkFragmentFromEnvelope(secondEnvelope)!;
+
+    expect(first.stream, second.stream);
+    expect(first.index, 0);
+    expect(second.index, 1);
+
+    final reassembled = <int>[...first.bytes, ...second.bytes];
+    expect(reassembled, fixtures.bytes('echo_response'));
+    final decoded = codec.decode(reassembled);
+    expect(decoded.envelope!['op'], 'echo');
+    expect(decoded.envelope!['body']['text'], 'hello chunk fixture');
+  });
+}
+
+class BlePayloadFixtures {
+  BlePayloadFixtures(this._payloads);
+
+  factory BlePayloadFixtures.load() {
+    final file = File('../Shared/BLEProtocolTests/ble_payload_fixtures.json');
+    final root = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+    final payloads = <String, List<int>>{};
+    for (final item in root['payloads'] as List<dynamic>) {
+      final payload = item as Map<String, dynamic>;
+      payloads[payload['name'] as String] = base64Decode(
+        payload['base64'] as String,
+      );
+    }
+    return BlePayloadFixtures(payloads);
+  }
+
+  final Map<String, List<int>> _payloads;
+
+  List<int> bytes(String name) {
+    final value = _payloads[name];
+    if (value == null) {
+      throw StateError('Missing BLE payload fixture: $name');
+    }
+    return value;
+  }
 }
