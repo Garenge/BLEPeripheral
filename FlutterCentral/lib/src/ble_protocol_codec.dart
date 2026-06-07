@@ -78,7 +78,22 @@ class BleProtocolCodec {
         ? body['capabilitySchema']
         : 'unknown';
 
-    return 'capabilities schema=$schema protected=${protectedOperations.join(",")} commands=${commands.join(",")} events=${events.length}';
+    final modes = eventRuleModesForInfoBody(body);
+    return 'capabilities schema=$schema protected=${protectedOperations.join(",")} commands=${commands.join(",")} events=${events.length} rules=${modes.join(",")}';
+  }
+
+  String? eventRuleModeFromBody(Map<dynamic, dynamic> body) {
+    final value = body['eventRuleMode'] ?? body['mode'];
+    if (value is String && supportedEventRuleModes.contains(value)) {
+      return value;
+    }
+    return null;
+  }
+
+  List<String> eventRuleModesForInfoBody(Map<dynamic, dynamic> body) {
+    return _stringList(
+      body['eventRuleModes'],
+    ).where(supportedEventRuleModes.contains).toList();
   }
 
   bool _isEchoReply(List<int> value) {
@@ -123,6 +138,8 @@ class BleProtocolCodec {
     }
   }
 }
+
+const List<String> supportedEventRuleModes = ['normal', 'quiet', 'burst'];
 
 class BleDecodedMessage {
   const BleDecodedMessage._({

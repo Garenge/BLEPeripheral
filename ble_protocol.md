@@ -139,6 +139,8 @@ The event rule mode is per Central session. It defaults to `normal`, appears in 
 | `quiet` | Suppresses ordinary `write` events while keeping pair and rule-change events. |
 | `burst` | Keeps normal behavior and adds `command.sample.detail` after `command sample`. |
 
+First-party Mac, iOS, and Flutter Central apps keep this mode visible with a selectable segmented control.
+
 Supported demo commands:
 
 | command | side effect |

@@ -52,6 +52,7 @@ class BleCentralController extends ChangeNotifier {
   int _protocolSequence = 0;
   String? sessionToken;
   String? capabilitySummary;
+  String eventRuleMode = 'normal';
 
   List<DiscoveredBleDevice> get devices => _devicesById.values.toList();
 
@@ -67,7 +68,7 @@ class BleCentralController extends ChangeNotifier {
     final capabilities = capabilitySummary == null
         ? ''
         : ' | $capabilitySummary';
-    return '$name ${notifyEnabled ? "Notify ON" : "Notify OFF"} $auth$capabilities';
+    return '$name ${notifyEnabled ? "Notify ON" : "Notify OFF"} $auth rule=$eventRuleMode$capabilities';
   }
 
   Future<void> startScan() async {
@@ -288,6 +289,7 @@ class BleCentralController extends ChangeNotifier {
     notifyEnabled = false;
     sessionToken = null;
     capabilitySummary = null;
+    eventRuleMode = 'normal';
     notifyListeners();
   }
 
@@ -305,7 +307,7 @@ class BleCentralController extends ChangeNotifier {
       final operation = envelope['op'];
       _log('$label protocol: ${_protocolCodec.summaryForProtocol(envelope)}');
       if (envelope['body'] is Map) {
-        _captureCapabilities(operation, envelope['body'] as Map);
+        _captureBodyState(operation, envelope['body'] as Map);
         _log(
           '${operation == "event" ? "EVT" : "RX"} body=${jsonEncode(envelope['body'])}',
         );
@@ -323,14 +325,23 @@ class BleCentralController extends ChangeNotifier {
     }
   }
 
-  void _captureCapabilities(Object? operation, Map<dynamic, dynamic> body) {
-    if (operation != 'info') {
-      return;
+  void _captureBodyState(Object? operation, Map<dynamic, dynamic> body) {
+    bool changed = false;
+    final mode = _protocolCodec.eventRuleModeFromBody(body);
+    if (mode != null && mode != eventRuleMode) {
+      eventRuleMode = mode;
+      _log('RULE mode=$eventRuleMode');
+      changed = true;
     }
-    final summary = _protocolCodec.capabilitySummaryForInfoBody(body);
-    capabilitySummary = summary;
-    _log('CAP $summary');
-    notifyListeners();
+    if (operation == 'info') {
+      final summary = _protocolCodec.capabilitySummaryForInfoBody(body);
+      capabilitySummary = summary;
+      _log('CAP $summary');
+      changed = true;
+    }
+    if (changed) {
+      notifyListeners();
+    }
   }
 
   String _resultName(ScanResult result) {

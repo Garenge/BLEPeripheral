@@ -12,6 +12,7 @@ typedef void (^BLECentralStateHandler)(void);
 @property (nonatomic, readonly) BOOL isConnected;
 @property (nonatomic, readonly) BOOL isNotifyEnabled;
 @property (nonatomic, readonly) BOOL isCharacteristicReady;
+@property (nonatomic, copy, readonly) NSString *eventRuleMode;
 @property (nonatomic, copy, readonly) NSArray<NSString *> *discoveredDeviceLabels;
 
 - (instancetype)initWithLogHandler:(BLECentralLogHandler)logHandler;

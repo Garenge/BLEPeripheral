@@ -70,12 +70,19 @@ void main() {
         {'type': 'subscribed'},
         {'type': 'paired'},
       ],
+      'eventRuleModes': ['normal', 'quiet', 'burst'],
     });
 
     expect(
       summary,
-      'capabilities schema=ble-demo.capabilities.v1 protected=echo,telemetry,command commands=identify,sample,resetCounters events=2',
+      'capabilities schema=ble-demo.capabilities.v1 protected=echo,telemetry,command commands=identify,sample,resetCounters events=2 rules=normal,quiet,burst',
     );
+  });
+
+  test('extracts event rule mode from protocol bodies', () {
+    expect(codec.eventRuleModeFromBody({'eventRuleMode': 'quiet'}), 'quiet');
+    expect(codec.eventRuleModeFromBody({'mode': 'burst'}), 'burst');
+    expect(codec.eventRuleModeFromBody({'eventRuleMode': 'loud'}), isNull);
   });
 
   test('decodes legacy echo payloads', () {

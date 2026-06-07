@@ -118,6 +118,8 @@ static void TestInfoCapabilityDiscovery(void) {
     AssertTrue(commands.count == 4, @"info lists demo commands");
     AssertTrue(events.count >= 8, @"info lists event types");
     AssertTrue([summary containsString:@"commands=identify,sample,resetCounters,setEventRule"], @"capability summary lists command names");
+    AssertTrue([summary containsString:@"rules=normal,quiet,burst"], @"capability summary lists event rule modes");
+    AssertTrue([[BLEProtocolMessage eventRuleModeFromBody:body] isEqualToString:@"normal"], @"info body exposes current event rule mode");
 }
 
 static void TestCommandMetadata(void) {

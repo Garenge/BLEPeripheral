@@ -8,6 +8,7 @@
 @property (nonatomic, strong) UITextField *echoTextField;
 @property (nonatomic, strong) UITextField *pairCodeField;
 @property (nonatomic, strong) UILabel *statusLabel;
+@property (nonatomic, strong) UISegmentedControl *ruleModeControl;
 
 @end
 
@@ -61,6 +62,10 @@
         [self makeButton:@"Raw" action:@selector(legacyTapped)],
     ]];
 
+    self.ruleModeControl = [[UISegmentedControl alloc] initWithItems:@[ @"Normal", @"Quiet", @"Burst" ]];
+    self.ruleModeControl.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.ruleModeControl addTarget:self action:@selector(ruleModeChanged:) forControlEvents:UIControlEventValueChanged];
+
     UIStackView *dataButtons = [self buttonRow:@[
         [self makeButton:@"Read" action:@selector(readTapped)],
         [self makeButton:@"Notify On" action:@selector(notifyOnTapped)],
@@ -99,6 +104,7 @@
         protocolButtons,
         self.echoTextField,
         advancedButtons,
+        self.ruleModeControl,
         dataButtons,
         self.logTextView,
     ]];
@@ -136,10 +142,12 @@
 }
 
 - (void)refreshStatus {
-    self.statusLabel.text = [NSString stringWithFormat:@"Scan=%@ Connect=%@ Notify=%@ | Tap device to connect",
+    self.statusLabel.text = [NSString stringWithFormat:@"Scan=%@ Connect=%@ Notify=%@ Rule=%@ | Tap device to connect",
                               self.centralController.isScanning ? @"YES" : @"NO",
                               self.centralController.isConnected ? @"YES" : @"NO",
-                              self.centralController.isNotifying ? @"YES" : @"NO"];
+                              self.centralController.isNotifying ? @"YES" : @"NO",
+                              self.centralController.eventRuleMode];
+    self.ruleModeControl.selectedSegmentIndex = [self selectedRuleModeSegment];
     [self.tableView reloadData];
 }
 
@@ -203,6 +211,15 @@
     [self.centralController sendProtocolCommand:name];
 }
 
+- (void)ruleModeChanged:(UISegmentedControl *)sender {
+    NSArray<NSString *> *modes = @[ @"normal", @"quiet", @"burst" ];
+    NSInteger selectedSegment = sender.selectedSegmentIndex;
+    if (selectedSegment < 0 || selectedSegment >= (NSInteger)modes.count) {
+        return;
+    }
+    [self.centralController sendProtocolEventRuleMode:modes[(NSUInteger)selectedSegment]];
+}
+
 - (void)readTapped {
     [self.centralController readCharacteristic];
 }
@@ -221,6 +238,16 @@
         return nil;
     }
     return [text substringFromIndex:prefix.length];
+}
+
+- (NSInteger)selectedRuleModeSegment {
+    if ([self.centralController.eventRuleMode isEqualToString:@"quiet"]) {
+        return 1;
+    }
+    if ([self.centralController.eventRuleMode isEqualToString:@"burst"]) {
+        return 2;
+    }
+    return 0;
 }
 
 #pragma mark - UITableView

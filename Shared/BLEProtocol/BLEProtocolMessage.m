@@ -152,13 +152,41 @@
     NSArray *protectedOperations = [operations[@"protected"] isKindOfClass:[NSArray class]] ? operations[@"protected"] : @[];
     NSArray *commands = [body[@"commands"] isKindOfClass:[NSArray class]] ? body[@"commands"] : @[];
     NSArray *events = [body[@"events"] isKindOfClass:[NSArray class]] ? body[@"events"] : @[];
+    NSArray *eventRuleModes = [self eventRuleModesFromInfoBody:body];
     NSString *schema = [body[@"capabilitySchema"] isKindOfClass:[NSString class]] ? body[@"capabilitySchema"] : @"unknown";
 
-    return [NSString stringWithFormat:@"capabilities schema=%@ protected=%@ commands=%@ events=%lu",
+    return [NSString stringWithFormat:@"capabilities schema=%@ protected=%@ commands=%@ events=%lu rules=%@",
             schema,
             [protectedOperations componentsJoinedByString:@","],
             [[self commandNamesFromDescriptors:commands] componentsJoinedByString:@","],
-            (unsigned long)events.count];
+            (unsigned long)events.count,
+            [eventRuleModes componentsJoinedByString:@","]];
+}
+
++ (nullable NSString *)eventRuleModeFromBody:(NSDictionary *)body {
+    NSString *mode = [body[@"eventRuleMode"] isKindOfClass:[NSString class]] ? body[@"eventRuleMode"] : nil;
+    if (mode.length == 0) {
+        mode = [body[@"mode"] isKindOfClass:[NSString class]] ? body[@"mode"] : nil;
+    }
+    if (mode.length > 0 && [[self supportedEventRuleModes] containsObject:mode]) {
+        return mode;
+    }
+    return nil;
+}
+
++ (NSArray<NSString *> *)eventRuleModesFromInfoBody:(NSDictionary *)body {
+    NSArray *modes = [body[@"eventRuleModes"] isKindOfClass:[NSArray class]] ? body[@"eventRuleModes"] : @[];
+    NSMutableArray<NSString *> *validModes = [NSMutableArray array];
+    for (id mode in modes) {
+        if ([mode isKindOfClass:[NSString class]] && [[self supportedEventRuleModes] containsObject:mode]) {
+            [validModes addObject:mode];
+        }
+    }
+    return validModes.copy;
+}
+
++ (NSArray<NSString *> *)supportedEventRuleModes {
+    return @[ @"normal", @"quiet", @"burst" ];
 }
 
 + (NSArray<NSString *> *)commandNamesFromDescriptors:(NSArray *)commands {

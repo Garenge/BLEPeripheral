@@ -13,6 +13,7 @@ typedef void (^BLECentralDiscoveryHandler)(void);
 @property (nonatomic, readonly) BOOL isScanning;
 @property (nonatomic, readonly) BOOL isConnected;
 @property (nonatomic, readonly) BOOL isNotifying;
+@property (nonatomic, readonly, copy) NSString *eventRuleMode;
 @property (nonatomic, readonly, copy) NSArray<CBPeripheral *> *discoveredPeripherals;
 
 - (instancetype)initWithLogHandler:(BLECentralLogHandler)logHandler;

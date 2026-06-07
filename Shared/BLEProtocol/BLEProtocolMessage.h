@@ -37,6 +37,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 + (NSString *)summaryForDictionary:(NSDictionary *)dictionary;
 + (NSString *)capabilitySummaryForInfoBody:(NSDictionary *)body;
++ (nullable NSString *)eventRuleModeFromBody:(NSDictionary *)body;
++ (NSArray<NSString *> *)eventRuleModesFromInfoBody:(NSDictionary *)body;
 
 @end
 

@@ -17,6 +17,8 @@
 @property (nonatomic, strong) NSButton *infoButton;
 @property (nonatomic, strong) NSButton *telemetryButton;
 @property (nonatomic, strong) NSButton *commandButton;
+@property (nonatomic, strong) NSTextField *ruleModeLabel;
+@property (nonatomic, strong) NSSegmentedControl *ruleModeControl;
 @property (nonatomic, strong) NSButton *rawButton;
 @property (nonatomic, strong) NSButton *notifyButton;
 @property (nonatomic, strong) NSTextView *logTextView;
@@ -75,12 +77,14 @@
 
     NSStackView *topControls = [self buildTopControls];
     NSStackView *gattControls = [self buildGattControls];
+    NSStackView *ruleControls = [self buildRuleControls];
     NSScrollView *logScrollView = [self buildLogView];
 
     [contentView addSubview:titleLabel];
     [contentView addSubview:infoLabel];
     [contentView addSubview:topControls];
     [contentView addSubview:gattControls];
+    [contentView addSubview:ruleControls];
     [contentView addSubview:logScrollView];
 
     [NSLayoutConstraint activateConstraints:@[
@@ -100,7 +104,11 @@
         [gattControls.leadingAnchor constraintEqualToAnchor:topControls.leadingAnchor],
         [gattControls.trailingAnchor constraintEqualToAnchor:topControls.trailingAnchor],
 
-        [logScrollView.topAnchor constraintEqualToAnchor:gattControls.bottomAnchor constant:16],
+        [ruleControls.topAnchor constraintEqualToAnchor:gattControls.bottomAnchor constant:12],
+        [ruleControls.leadingAnchor constraintEqualToAnchor:gattControls.leadingAnchor],
+        [ruleControls.trailingAnchor constraintLessThanOrEqualToAnchor:gattControls.trailingAnchor],
+
+        [logScrollView.topAnchor constraintEqualToAnchor:ruleControls.bottomAnchor constant:16],
         [logScrollView.leadingAnchor constraintEqualToAnchor:contentView.leadingAnchor constant:20],
         [logScrollView.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor constant:-20],
         [logScrollView.bottomAnchor constraintEqualToAnchor:contentView.bottomAnchor constant:-20],
@@ -164,6 +172,22 @@
         self.rawButton,
         self.readButton,
         self.notifyButton,
+    ]];
+    [self configureStack:stack];
+    return stack;
+}
+
+- (NSStackView *)buildRuleControls {
+    self.ruleModeLabel = [self labelWithText:@"Rule mode: normal"];
+    self.ruleModeLabel.font = [NSFont systemFontOfSize:13 weight:NSFontWeightSemibold];
+    self.ruleModeControl = [NSSegmentedControl segmentedControlWithLabels:@[ @"Normal", @"Quiet", @"Burst" ]
+                                                              trackingMode:NSSegmentSwitchTrackingSelectOne
+                                                                    target:self
+                                                                    action:@selector(ruleModeChanged:)];
+    self.ruleModeControl.translatesAutoresizingMaskIntoConstraints = NO;
+    NSStackView *stack = [NSStackView stackViewWithViews:@[
+        self.ruleModeLabel,
+        self.ruleModeControl,
     ]];
     [self configureStack:stack];
     return stack;
@@ -260,6 +284,15 @@
     [self.centralController sendCommandNamed:name];
 }
 
+- (void)ruleModeChanged:(NSSegmentedControl *)sender {
+    NSArray<NSString *> *modes = @[ @"normal", @"quiet", @"burst" ];
+    NSInteger selectedSegment = sender.selectedSegment;
+    if (selectedSegment < 0 || selectedSegment >= (NSInteger)modes.count) {
+        return;
+    }
+    [self.centralController sendEventRuleMode:modes[(NSUInteger)selectedSegment]];
+}
+
 - (void)rawTapped:(id)sender {
     [self.centralController sendRawText:self.payloadField.stringValue];
 }
@@ -306,10 +339,23 @@
         self.writeButton.enabled = self.centralController.isCharacteristicReady;
         self.telemetryButton.enabled = self.centralController.isCharacteristicReady;
         self.commandButton.enabled = self.centralController.isCharacteristicReady;
+        self.ruleModeLabel.stringValue = [NSString stringWithFormat:@"Rule mode: %@", self.centralController.eventRuleMode];
+        self.ruleModeControl.enabled = self.centralController.isCharacteristicReady;
+        self.ruleModeControl.selectedSegment = [self selectedRuleModeSegment];
         self.rawButton.enabled = self.centralController.isCharacteristicReady;
         self.notifyButton.enabled = self.centralController.isCharacteristicReady;
         self.notifyButton.title = self.centralController.isNotifyEnabled ? @"Notify Off" : @"Notify On";
     });
+}
+
+- (NSInteger)selectedRuleModeSegment {
+    if ([self.centralController.eventRuleMode isEqualToString:@"quiet"]) {
+        return 1;
+    }
+    if ([self.centralController.eventRuleMode isEqualToString:@"burst"]) {
+        return 2;
+    }
+    return 0;
 }
 
 - (void)appendLog:(NSString *)message {

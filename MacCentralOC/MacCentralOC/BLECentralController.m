@@ -6,6 +6,7 @@
 static NSString * const kTargetPeripheralName = @"MacBLE-Demo";
 static NSString * const kServiceUUIDString = @"0000FFF0-0000-1000-8000-00805F9B34FB";
 static NSString * const kCharacteristicUUIDString = @"0000FFF1-0000-1000-8000-00805F9B34FB";
+static NSString * const kEventRuleModeNormal = @"normal";
 
 @interface BLECentralController () <CBCentralManagerDelegate, CBPeripheralDelegate>
 
@@ -20,6 +21,7 @@ static NSString * const kCharacteristicUUIDString = @"0000FFF1-0000-1000-8000-00
 @property (nonatomic) BOOL notifyEnabled;
 @property (nonatomic) NSUInteger protocolSequence;
 @property (nonatomic, copy, nullable) NSString *sessionToken;
+@property (nonatomic, copy) NSString *eventRuleMode;
 
 @end
 
@@ -31,6 +33,7 @@ static NSString * const kCharacteristicUUIDString = @"0000FFF1-0000-1000-8000-00
         _logHandler = [logHandler copy];
         _mutableDiscoveredPeripherals = [NSMutableArray array];
         _discoveredIDs = [NSMutableSet set];
+        _eventRuleMode = kEventRuleModeNormal;
         _centralManager = [[CBCentralManager alloc] initWithDelegate:self queue:nil];
         [self logEvent:@"SYS" detail:@"MacCentralOC/MacCentralOC/BLECentralController.m#init: CBCentralManager created"];
     }
@@ -370,6 +373,7 @@ static NSString * const kCharacteristicUUIDString = @"0000FFF1-0000-1000-8000-00
         return;
     }
     NSString *operation = message[BLEProtocolKeyOperation] ?: @"?";
+    [self captureEventRuleModeFromBody:body];
     if ([operation isEqualToString:BLEProtocolOpInfo]) {
         [self logEvent:@"CAP" detail:[BLEProtocolMessage capabilitySummaryForInfoBody:body]];
     }
@@ -378,6 +382,16 @@ static NSString * const kCharacteristicUUIDString = @"0000FFF1-0000-1000-8000-00
     NSString *bodyText = [[NSString alloc] initWithData:bodyData encoding:NSUTF8StringEncoding] ?: @"{}";
     NSString *category = [operation isEqualToString:BLEProtocolOpEvent] ? @"EVT" : @"RX";
     [self logEvent:category detail:[NSString stringWithFormat:@"body=%@", bodyText]];
+}
+
+- (void)captureEventRuleModeFromBody:(NSDictionary *)body {
+    NSString *mode = [BLEProtocolMessage eventRuleModeFromBody:body];
+    if (mode.length == 0 || [mode isEqualToString:self.eventRuleMode]) {
+        return;
+    }
+    self.eventRuleMode = mode;
+    [self logEvent:@"RULE" detail:[NSString stringWithFormat:@"mode=%@", mode]];
+    [self notifyStateChanged];
 }
 
 - (BOOL)isEchoReply:(NSData *)data {
@@ -412,6 +426,7 @@ static NSString * const kCharacteristicUUIDString = @"0000FFF1-0000-1000-8000-00
     self.connected = NO;
     self.notifyEnabled = NO;
     self.sessionToken = nil;
+    self.eventRuleMode = kEventRuleModeNormal;
     [self notifyStateChanged];
 }
 

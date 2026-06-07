@@ -244,27 +244,7 @@ class _BleCentralPageState extends State<BleCentralPage> {
                           icon: const Icon(Icons.terminal),
                           label: const Text('Command'),
                         ),
-                        OutlinedButton.icon(
-                          onPressed: _controller.demoCharacteristic == null
-                              ? null
-                              : () => _controller.sendEventRuleMode('normal'),
-                          icon: const Icon(Icons.rule),
-                          label: const Text('Rule Normal'),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: _controller.demoCharacteristic == null
-                              ? null
-                              : () => _controller.sendEventRuleMode('quiet'),
-                          icon: const Icon(Icons.volume_down),
-                          label: const Text('Rule Quiet'),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: _controller.demoCharacteristic == null
-                              ? null
-                              : () => _controller.sendEventRuleMode('burst'),
-                          icon: const Icon(Icons.bolt),
-                          label: const Text('Rule Burst'),
-                        ),
+                        _buildRuleModeControl(),
                         OutlinedButton.icon(
                           onPressed: _controller.demoCharacteristic == null
                               ? null
@@ -342,6 +322,32 @@ class _BleCentralPageState extends State<BleCentralPage> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildRuleModeControl() {
+    return SegmentedButton<String>(
+      segments: const [
+        ButtonSegment(
+          value: 'normal',
+          icon: Icon(Icons.rule),
+          label: Text('Normal'),
+        ),
+        ButtonSegment(
+          value: 'quiet',
+          icon: Icon(Icons.volume_down),
+          label: Text('Quiet'),
+        ),
+        ButtonSegment(
+          value: 'burst',
+          icon: Icon(Icons.bolt),
+          label: Text('Burst'),
+        ),
+      ],
+      selected: {_controller.eventRuleMode},
+      onSelectionChanged: _controller.demoCharacteristic == null
+          ? null
+          : (selection) => _controller.sendEventRuleMode(selection.first),
     );
   }
 

@@ -5,6 +5,7 @@
 static NSString * const kTargetPeripheralName = @"MacBLE-Demo";
 static NSString * const kServiceUUIDString = @"0000FFF0-0000-1000-8000-00805F9B34FB";
 static NSString * const kCharacteristicUUIDString = @"0000FFF1-0000-1000-8000-00805F9B34FB";
+static NSString * const kEventRuleModeNormal = @"normal";
 
 @interface BLECentralController () <CBCentralManagerDelegate, CBPeripheralDelegate>
 
@@ -16,6 +17,7 @@ static NSString * const kCharacteristicUUIDString = @"0000FFF1-0000-1000-8000-00
 @property (nonatomic, strong) NSMutableSet<NSUUID *> *discoveredIDs;
 @property (nonatomic) NSUInteger protocolSequence;
 @property (nonatomic, copy, nullable) NSString *sessionToken;
+@property (nonatomic, copy) NSString *eventRuleMode;
 @property (nonatomic) BOOL scanning;
 @property (nonatomic) BOOL connected;
 @property (nonatomic) BOOL notifying;
@@ -30,6 +32,7 @@ static NSString * const kCharacteristicUUIDString = @"0000FFF1-0000-1000-8000-00
         _logHandler = [logHandler copy];
         _mutableDiscoveredPeripherals = [NSMutableArray array];
         _discoveredIDs = [NSMutableSet set];
+        _eventRuleMode = kEventRuleModeNormal;
         _centralManager = [[CBCentralManager alloc] initWithDelegate:self queue:nil];
     }
     return self;
@@ -190,6 +193,8 @@ static NSString * const kCharacteristicUUIDString = @"0000FFF1-0000-1000-8000-00
     self.demoCharacteristic = nil;
     self.connected = NO;
     self.notifying = NO;
+    self.sessionToken = nil;
+    self.eventRuleMode = kEventRuleModeNormal;
 }
 
 #pragma mark - CBCentralManagerDelegate
@@ -340,6 +345,7 @@ static NSString * const kCharacteristicUUIDString = @"0000FFF1-0000-1000-8000-00
         return;
     }
     NSString *operation = message[BLEProtocolKeyOperation] ?: @"?";
+    [self captureEventRuleModeFromBody:body];
     if ([operation isEqualToString:BLEProtocolOpInfo]) {
         [self log:[NSString stringWithFormat:@"CAP %@", [BLEProtocolMessage capabilitySummaryForInfoBody:body]]];
     }
@@ -347,6 +353,15 @@ static NSString * const kCharacteristicUUIDString = @"0000FFF1-0000-1000-8000-00
     NSData *bodyData = [NSJSONSerialization dataWithJSONObject:body options:0 error:&error];
     NSString *bodyText = [[NSString alloc] initWithData:bodyData encoding:NSUTF8StringEncoding] ?: @"{}";
     [self log:[NSString stringWithFormat:@"BODY %@", bodyText]];
+}
+
+- (void)captureEventRuleModeFromBody:(NSDictionary *)body {
+    NSString *mode = [BLEProtocolMessage eventRuleModeFromBody:body];
+    if (mode.length == 0 || [mode isEqualToString:self.eventRuleMode]) {
+        return;
+    }
+    self.eventRuleMode = mode;
+    [self log:[NSString stringWithFormat:@"RULE mode=%@", mode]];
 }
 
 - (void)peripheral:(CBPeripheral *)peripheral didWriteValueForCharacteristic:(CBCharacteristic *)characteristic error:(NSError *)error {

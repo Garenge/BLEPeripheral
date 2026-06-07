@@ -10,7 +10,7 @@ flutter run -d macos
 
 Start `../MacPeripheralOC/BLEPeripheral.xcodeproj` first, then allow Bluetooth permission in the Flutter app.
 
-After connecting, the app auto-enables Notify, sends Pair code `135790`, and requests `getInfo` capability discovery. Use **Pair**, **Ping**, **Info**, **Echo**, **Telemetry**, **Command**, **Rule Normal/Quiet/Burst**, **Raw**, **Read**, and **Notify On/Off** to compare JSON protocol traffic with legacy raw echo traffic.
+After connecting, the app auto-enables Notify, sends Pair code `135790`, and requests `getInfo` capability discovery. Use **Pair**, **Ping**, **Info**, **Echo**, **Telemetry**, **Command**, the event-rule segmented control, **Raw**, **Read**, and **Notify On/Off** to compare JSON protocol traffic with legacy raw echo traffic.
 
 ## What This Project Teaches
 
@@ -25,7 +25,7 @@ After connecting, the app auto-enables Notify, sends Pair code `135790`, and req
 - JSON envelope encoding/decoding in Dart
 - Session token capture from `paired` responses
 - Capability summary capture from `info` responses
-- Event rule switching through `command setEventRule`
+- Event rule mode display and switching through `command setEventRule`
 
 ## Sources
 
