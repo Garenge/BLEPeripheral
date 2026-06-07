@@ -21,6 +21,7 @@ NSString * const BLEProtocolOpTelemetry = @"telemetry";
 NSString * const BLEProtocolOpCommand = @"command";
 NSString * const BLEProtocolOpCommandResult = @"commandResult";
 NSString * const BLEProtocolOpEvent = @"event";
+NSString * const BLEProtocolOpChunk = @"chunk";
 NSString * const BLEProtocolOpTick = @"tick";
 NSString * const BLEProtocolOpError = @"error";
 

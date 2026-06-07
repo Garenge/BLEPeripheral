@@ -23,6 +23,7 @@ FOUNDATION_EXPORT NSString * const BLEProtocolOpTelemetry;
 FOUNDATION_EXPORT NSString * const BLEProtocolOpCommand;
 FOUNDATION_EXPORT NSString * const BLEProtocolOpCommandResult;
 FOUNDATION_EXPORT NSString * const BLEProtocolOpEvent;
+FOUNDATION_EXPORT NSString * const BLEProtocolOpChunk;
 FOUNDATION_EXPORT NSString * const BLEProtocolOpTick;
 FOUNDATION_EXPORT NSString * const BLEProtocolOpError;
 

@@ -48,6 +48,7 @@ Implemented:
 - Shared JSON protocol v1 in `Shared/BLEProtocol/`
 - GATT service `FFF0`, characteristic `FFF1` (`read` / `write` / `notify`)
 - Protocol: `pair`, `ping`, `getInfo`, `echo`, `telemetry`, `command`, server `event`; legacy raw writes
+- Notify queue with MTU-aware `op=chunk` splitting and automatic reassembly in Mac/iOS/Flutter Central clients
 
 See [ble_protocol.md](ble_protocol.md) for message format.
 
@@ -136,7 +137,7 @@ Core Central sequence:
 
 First-party protocol sequence:
 
-`scan` → `connect` → `discover FFF0/FFF1` → `notify on` → `pair(code=135790)` + `getInfo` → `token` + capabilities → protected `echo` / `telemetry` / `command` → `event` notifications
+`scan` → `connect` → `discover FFF0/FFF1` → `notify on` → `pair(code=135790)` + `getInfo` → `token` + capabilities → protected `echo` / `telemetry` / `command` → queued notify replies / `event` notifications → `chunk` reassembly when needed
 
 Demo commands: `identify`, `sample`, `resetCounters`, `setEventRule`.
 
@@ -154,9 +155,9 @@ Demo commands: `identify`, `sample`, `resetCounters`, `setEventRule`.
 | Command `resetCounters` | Write + Notify | Yes | `commandResult`, then counter reset event |
 | Command `setEventRule` | Write + Notify | Yes | Switches `normal` / `quiet` / `burst`; pushes `event.ruleChanged` |
 | Raw | Write + Notify/Read | No | Legacy `00 AA` + original bytes |
+| Chunk | Notify | No | Automatic transport wrapper for oversized replies/events; clients reassemble then parse original payload |
 
 ## Next Work
 
 - Configurable profile + persistence
-- Notify queue / MTU splitting
-- Unit tests for `Shared/BLEProtocol`
+- Broader integration tests with recorded BLE payload fixtures

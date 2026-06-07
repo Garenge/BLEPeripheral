@@ -27,6 +27,7 @@ After connecting, the app auto-enables Notify, sends Pair code `135790`, and req
 - Session token capture from `paired` responses
 - Capability summary capture from `info` responses
 - Event rule mode display and switching through `command setEventRule`
+- MTU chunk reassembly for oversized Notify replies/events
 
 ## Sources
 
@@ -43,4 +44,5 @@ After connecting, the app auto-enables Notify, sends Pair code `135790`, and req
 - Protocol rule: Pair with `135790`, then include token for `echo`, `telemetry`, and `command`
 - Capability rule: `getInfo` is open and returns supported operations, commands, event rules, security, and transport hints
 - Event rule: `setEventRule` switches `normal`, `quiet`, or `burst` per Central session
+- Chunk rule: oversized Notify payloads arrive as `op=chunk`; the app logs progress, reassembles, then parses the original message
 - Raw rule: write any non-protocol payload, receive `00 AA` + original payload by notify or read

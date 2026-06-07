@@ -35,6 +35,17 @@ NS_ASSUME_NONNULL_BEGIN
                         session:(nullable NSString *)session
                            body:(NSDictionary *)body;
 
++ (NSDictionary *)chunkWithStreamID:(NSString *)streamID
+                            index:(NSUInteger)index
+                            count:(NSUInteger)count
+                             data:(NSData *)data;
+
++ (BOOL)isChunkEnvelope:(NSDictionary *)dictionary;
++ (nullable NSData *)chunkPayloadFromEnvelope:(NSDictionary *)dictionary
+                                     streamID:(NSString * _Nullable * _Nullable)streamID
+                                        index:(NSUInteger * _Nullable)index
+                                        count:(NSUInteger * _Nullable)count;
+
 + (NSString *)summaryForDictionary:(NSDictionary *)dictionary;
 + (NSString *)capabilitySummaryForInfoBody:(NSDictionary *)body;
 + (nullable NSString *)eventRuleModeFromBody:(NSDictionary *)body;

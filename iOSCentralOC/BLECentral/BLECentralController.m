@@ -28,6 +28,8 @@ static NSString * const kEventRuleModeNormal = @"normal";
 @property (nonatomic) NSUInteger protocolSequence;
 @property (nonatomic, copy, nullable) NSString *sessionToken;
 @property (nonatomic, copy) NSString *eventRuleMode;
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSMutableDictionary<NSNumber *, NSData *> *> *chunkBuffers;
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *chunkCounts;
 @property (nonatomic) BOOL scanning;
 @property (nonatomic) BOOL connected;
 @property (nonatomic) BOOL notifying;
@@ -43,6 +45,8 @@ static NSString * const kEventRuleModeNormal = @"normal";
         _mutableDiscoveredDevices = [NSMutableArray array];
         _discoveredRecords = [NSMutableDictionary dictionary];
         _eventRuleMode = kEventRuleModeNormal;
+        _chunkBuffers = [NSMutableDictionary dictionary];
+        _chunkCounts = [NSMutableDictionary dictionary];
         _centralManager = [[CBCentralManager alloc] initWithDelegate:self queue:nil];
     }
     return self;
@@ -224,6 +228,8 @@ static NSString * const kEventRuleModeNormal = @"normal";
     self.notifying = NO;
     self.sessionToken = nil;
     self.eventRuleMode = kEventRuleModeNormal;
+    [self.chunkBuffers removeAllObjects];
+    [self.chunkCounts removeAllObjects];
 }
 
 #pragma mark - CBCentralManagerDelegate
@@ -354,6 +360,9 @@ static NSString * const kEventRuleModeNormal = @"normal";
     NSError *error = nil;
     NSDictionary *message = [BLEProtocolMessage dictionaryFromData:data error:&error];
     if ([BLEProtocolMessage isProtocolEnvelope:message]) {
+        if ([self handleChunkEnvelope:message label:label]) {
+            return;
+        }
         [self captureSessionTokenFromMessage:message];
         [self log:[NSString stringWithFormat:@"%@ protocol: %@", label, [BLEProtocolMessage summaryForDictionary:message]]];
         [self logProtocolBodyForMessage:message];
@@ -362,6 +371,82 @@ static NSString * const kEventRuleModeNormal = @"normal";
 
     NSString *text = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: data.description;
     [self log:[NSString stringWithFormat:@"%@ raw: %@", label, text]];
+}
+
+- (BOOL)handleChunkEnvelope:(NSDictionary *)message label:(NSString *)label {
+    if (![BLEProtocolMessage isChunkEnvelope:message]) {
+        return NO;
+    }
+
+    NSString *streamID = nil;
+    NSUInteger index = 0;
+    NSUInteger count = 0;
+    NSData *payload = [BLEProtocolMessage chunkPayloadFromEnvelope:message
+                                                          streamID:&streamID
+                                                             index:&index
+                                                             count:&count];
+    if (!payload) {
+        [self log:[NSString stringWithFormat:@"%@ chunk invalid", label]];
+        return YES;
+    }
+
+    NSData *complete = [self captureChunkPayload:payload
+                                          stream:streamID
+                                           index:index
+                                           count:count
+                                           label:label];
+    if (complete.length > 0) {
+        [self logParsedReplyData:complete label:[NSString stringWithFormat:@"%@ chunk", label]];
+    }
+    return YES;
+}
+
+- (nullable NSData *)captureChunkPayload:(NSData *)payload
+                                  stream:(NSString *)streamID
+                                   index:(NSUInteger)index
+                                   count:(NSUInteger)count
+                                   label:(NSString *)label {
+    NSMutableDictionary<NSNumber *, NSData *> *chunks = self.chunkBuffers[streamID];
+    NSNumber *expectedCount = self.chunkCounts[streamID];
+    if (expectedCount && expectedCount.unsignedIntegerValue != count) {
+        [self.chunkBuffers removeObjectForKey:streamID];
+        [self.chunkCounts removeObjectForKey:streamID];
+        chunks = nil;
+    }
+    if (!chunks) {
+        chunks = [NSMutableDictionary dictionary];
+        self.chunkBuffers[streamID] = chunks;
+        self.chunkCounts[streamID] = @(count);
+    }
+    chunks[@(index)] = payload;
+    [self log:[NSString stringWithFormat:@"%@ chunk: stream=%@ part=%lu/%lu bytes=%lu",
+               label,
+               streamID,
+               (unsigned long)(index + 1),
+               (unsigned long)count,
+               (unsigned long)payload.length]];
+    if (chunks.count < count) {
+        return nil;
+    }
+    return [self reassembledChunkDataForStream:streamID count:count];
+}
+
+- (nullable NSData *)reassembledChunkDataForStream:(NSString *)streamID count:(NSUInteger)count {
+    NSMutableDictionary<NSNumber *, NSData *> *chunks = self.chunkBuffers[streamID];
+    NSMutableData *complete = [NSMutableData data];
+    for (NSUInteger index = 0; index < count; index++) {
+        NSData *part = chunks[@(index)];
+        if (!part) {
+            return nil;
+        }
+        [complete appendData:part];
+    }
+    [self.chunkBuffers removeObjectForKey:streamID];
+    [self.chunkCounts removeObjectForKey:streamID];
+    [self log:[NSString stringWithFormat:@"chunk complete: stream=%@ bytes=%lu",
+               streamID,
+               (unsigned long)complete.length]];
+    return complete.copy;
 }
 
 - (void)captureSessionTokenFromMessage:(NSDictionary *)message {

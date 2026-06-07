@@ -12,6 +12,7 @@ GATT 特征 **FFF1** 当前属性：`read` + `write` + `writeWithoutResponse` + 
 | Mac → 手机（业务回复） | **Notify**（已订阅时） | 推送与请求对应的 JSON 响应；协议首选 |
 | Mac → 手机（业务回复） | **Read FFF1** | 读特征当前值 = 最近一次处理后的响应字节 |
 | 事件推送 | **Notify** | Mac 推送 `op=event`，用于订阅、配对、写入等 session 事件 |
+| 长 Notify payload | **`op=chunk` 分片** | payload 超过 Central 的 `maximumUpdateValueLength` 时，Mac 按 stream 分片；first-party clients 自动重组后再解析原始 JSON/legacy payload |
 
 **结论（我们定义的用法）：**
 
@@ -101,6 +102,26 @@ Server may also push `event` notifications (no request), with:
 ```
 
 Event types currently include `subscribed`, `paired`, `write`, `command.identify`, `command.sample`, `command.sample.detail`, `command.resetCounters`, and `event.ruleChanged`.
+
+Server may also push `chunk` notifications when a reply/event is larger than the Central's negotiated notify update length. Each chunk body is:
+
+```json
+{
+  "v": 1,
+  "op": "chunk",
+  "id": "chunk-mac-abc12345-1-0",
+  "ok": true,
+  "body": {
+    "stream": "mac-abc12345-1",
+    "index": 0,
+    "count": 3,
+    "encoding": "base64",
+    "data": "eyJ2IjoxLCJvcCI6..."
+  }
+}
+```
+
+`index` is zero-based. Receivers collect all chunks with the same `stream`, concatenate decoded `data` by `index`, then parse the reassembled bytes through the normal protocol/legacy path. First-party Mac, iOS, and Flutter Central clients log chunk progress and `chunk complete`.
 
 ## Capability Discovery
 

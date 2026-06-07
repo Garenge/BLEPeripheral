@@ -2,6 +2,7 @@ import 'dart:convert';
 
 const int bleProtocolVersion = 1;
 const String bleDefaultPairCode = '135790';
+const String bleProtocolOpChunk = 'chunk';
 
 class BleProtocolCodec {
   const BleProtocolCodec();
@@ -88,6 +89,45 @@ class BleProtocolCodec {
       return value;
     }
     return null;
+  }
+
+  BleChunkFragment? chunkFragmentFromEnvelope(Map<dynamic, dynamic> envelope) {
+    if (envelope['op'] != bleProtocolOpChunk) {
+      return null;
+    }
+    final body = envelope['body'];
+    if (body is! Map) {
+      return null;
+    }
+    final stream = body['stream'];
+    final index = body['index'];
+    final count = body['count'];
+    final encoding = body['encoding'];
+    final encodedData = body['data'];
+    if (stream is! String ||
+        stream.isEmpty ||
+        index is! num ||
+        count is! num ||
+        encoding != 'base64' ||
+        encodedData is! String ||
+        encodedData.isEmpty) {
+      return null;
+    }
+    final indexValue = index.toInt();
+    final countValue = count.toInt();
+    if (countValue <= 0 || indexValue < 0 || indexValue >= countValue) {
+      return null;
+    }
+    try {
+      return BleChunkFragment(
+        stream: stream,
+        index: indexValue,
+        count: countValue,
+        bytes: base64Decode(encodedData),
+      );
+    } catch (_) {
+      return null;
+    }
   }
 
   List<String> eventRuleModesForInfoBody(Map<dynamic, dynamic> body) {
@@ -193,3 +233,17 @@ class BleDecodedMessage {
 }
 
 enum BleDecodedMessageKind { protocol, legacyEcho, raw }
+
+class BleChunkFragment {
+  const BleChunkFragment({
+    required this.stream,
+    required this.index,
+    required this.count,
+    required this.bytes,
+  });
+
+  final String stream;
+  final int index;
+  final int count;
+  final List<int> bytes;
+}

@@ -176,6 +176,27 @@ static void TestCommandMissingName(void) {
     AssertTrue([response[BLEProtocolKeyError][@"code"] isEqualToString:BLEProtocolErrorInvalidBody], @"missing command name is invalid_body");
 }
 
+static void TestChunkEnvelopeRoundTrip(void) {
+    NSData *payload = [@"hello chunk" dataUsingEncoding:NSUTF8StringEncoding];
+    NSDictionary *chunk = [BLEProtocolMessage chunkWithStreamID:@"stream-1" index:1 count:3 data:payload];
+    NSError *error = nil;
+    NSData *data = [BLEProtocolMessage dataFromDictionary:chunk error:&error];
+    NSDictionary *decoded = [BLEProtocolMessage dictionaryFromData:data error:&error];
+    NSString *streamID = nil;
+    NSUInteger index = 0;
+    NSUInteger count = 0;
+    NSData *decodedPayload = [BLEProtocolMessage chunkPayloadFromEnvelope:decoded
+                                                                  streamID:&streamID
+                                                                     index:&index
+                                                                     count:&count];
+
+    AssertTrue([BLEProtocolMessage isChunkEnvelope:decoded], @"chunk envelope recognized");
+    AssertTrue([streamID isEqualToString:@"stream-1"], @"chunk stream decoded");
+    AssertTrue(index == 1, @"chunk index decoded");
+    AssertTrue(count == 3, @"chunk count decoded");
+    AssertTrue([decodedPayload isEqualToData:payload], @"chunk payload round trips");
+}
+
 int main(int argc, const char * argv[]) {
     @autoreleasepool {
         NSLog(@"BLEProtocol smoke tests starting");
@@ -187,6 +208,7 @@ int main(int argc, const char * argv[]) {
         TestSetEventRuleCommand();
         TestSetEventRuleRejectsInvalidMode();
         TestCommandMissingName();
+        TestChunkEnvelopeRoundTrip();
         if (gFailureCount > 0) {
             NSLog(@"BLEProtocol smoke tests failed: %lu", (unsigned long)gFailureCount);
             return 1;

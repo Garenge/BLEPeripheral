@@ -62,6 +62,8 @@ class BleCentralController extends ChangeNotifier {
   final List<StreamSubscription<dynamic>> _subscriptions = [];
   final BleProtocolCodec _protocolCodec = const BleProtocolCodec();
   final Map<String, DiscoveredBleDevice> _devicesById = {};
+  final Map<String, Map<int, List<int>>> _chunkBuffers = {};
+  final Map<String, int> _chunkCounts = {};
   final List<String> logs = [];
 
   BluetoothAdapterState _adapterState = FlutterBluePlus.adapterStateNow;
@@ -326,6 +328,8 @@ class BleCentralController extends ChangeNotifier {
     sessionToken = null;
     capabilitySummary = null;
     eventRuleMode = 'normal';
+    _chunkBuffers.clear();
+    _chunkCounts.clear();
     notifyListeners();
   }
 
@@ -339,6 +343,9 @@ class BleCentralController extends ChangeNotifier {
     }
     if (decoded.kind == BleDecodedMessageKind.protocol) {
       final envelope = decoded.envelope!;
+      if (_handleChunkEnvelope(envelope, label)) {
+        return;
+      }
       _captureSessionToken(decoded.token);
       final operation = envelope['op'];
       _log('$label protocol: ${_protocolCodec.summaryForProtocol(envelope)}');
@@ -351,6 +358,59 @@ class BleCentralController extends ChangeNotifier {
       return;
     }
     _log('$label raw: ${decoded.bytes.length} B text="${decoded.text}"');
+  }
+
+  bool _handleChunkEnvelope(Map<String, dynamic> envelope, String label) {
+    final chunk = _protocolCodec.chunkFragmentFromEnvelope(envelope);
+    if (envelope['op'] != bleProtocolOpChunk) {
+      return false;
+    }
+    if (chunk == null) {
+      _log('$label chunk invalid');
+      return true;
+    }
+    final complete = _captureChunk(chunk, label);
+    if (complete != null) {
+      _logIncoming(complete, '$label chunk');
+    }
+    return true;
+  }
+
+  List<int>? _captureChunk(BleChunkFragment chunk, String label) {
+    final expectedCount = _chunkCounts[chunk.stream];
+    if (expectedCount != null && expectedCount != chunk.count) {
+      _chunkBuffers.remove(chunk.stream);
+      _chunkCounts.remove(chunk.stream);
+    }
+    final parts = _chunkBuffers.putIfAbsent(chunk.stream, () => {});
+    _chunkCounts[chunk.stream] = chunk.count;
+    parts[chunk.index] = chunk.bytes;
+    _log(
+      '$label chunk: stream=${chunk.stream} part=${chunk.index + 1}/${chunk.count} bytes=${chunk.bytes.length}',
+    );
+    if (parts.length < chunk.count) {
+      return null;
+    }
+    return _reassembledChunkData(chunk.stream, chunk.count);
+  }
+
+  List<int>? _reassembledChunkData(String stream, int count) {
+    final parts = _chunkBuffers[stream];
+    if (parts == null) {
+      return null;
+    }
+    final complete = <int>[];
+    for (var index = 0; index < count; index += 1) {
+      final part = parts[index];
+      if (part == null) {
+        return null;
+      }
+      complete.addAll(part);
+    }
+    _chunkBuffers.remove(stream);
+    _chunkCounts.remove(stream);
+    _log('RX chunk complete: stream=$stream bytes=${complete.length}');
+    return complete;
   }
 
   void _captureSessionToken(String? token) {

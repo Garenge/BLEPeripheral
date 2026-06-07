@@ -85,6 +85,48 @@ void main() {
     expect(codec.eventRuleModeFromBody({'eventRuleMode': 'loud'}), isNull);
   });
 
+  test('extracts base64 chunk fragments', () {
+    final envelope = {
+      'v': 1,
+      'op': bleProtocolOpChunk,
+      'id': 'chunk-stream-0',
+      'ok': true,
+      'body': {
+        'stream': 'stream-1',
+        'index': 1,
+        'count': 3,
+        'encoding': 'base64',
+        'data': base64Encode(utf8.encode('world')),
+      },
+    };
+
+    final chunk = codec.chunkFragmentFromEnvelope(envelope);
+
+    expect(chunk, isNotNull);
+    expect(chunk!.stream, 'stream-1');
+    expect(chunk.index, 1);
+    expect(chunk.count, 3);
+    expect(utf8.decode(chunk.bytes), 'world');
+  });
+
+  test('rejects invalid chunk fragments', () {
+    final envelope = {
+      'v': 1,
+      'op': bleProtocolOpChunk,
+      'id': 'chunk-stream-3',
+      'ok': true,
+      'body': {
+        'stream': 'stream-1',
+        'index': 3,
+        'count': 3,
+        'encoding': 'base64',
+        'data': base64Encode(utf8.encode('x')),
+      },
+    };
+
+    expect(codec.chunkFragmentFromEnvelope(envelope), isNull);
+  });
+
   test('decodes legacy echo payloads', () {
     final decoded = codec.decode([0x00, 0xAA, ...utf8.encode('raw')]);
 

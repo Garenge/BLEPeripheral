@@ -2,6 +2,7 @@
 #import <CoreBluetooth/CoreBluetooth.h>
 #import "BLEProtocolConstants.h"
 #import "BLEProtocolHandler.h"
+#import "BLEProtocolMessage.h"
 
 static NSString * const kDemoPeripheralName = @"MacBLE-Demo";
 static NSString * const kDemoServiceUUIDString = @"0000FFF0-0000-1000-8000-00805F9B34FB";
@@ -10,6 +11,8 @@ static NSString * const kUnknownCentralUUIDString = @"00000000-0000-0000-0000-00
 static NSString * const kEventRuleModeNormal = @"normal";
 static NSString * const kEventRuleModeQuiet = @"quiet";
 static NSString * const kEventRuleModeBurst = @"burst";
+static NSUInteger const kNotifyChunkEnvelopeReserve = 96;
+static NSUInteger const kDefaultNotifyChunkPayloadLength = 128;
 
 static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
 
@@ -18,6 +21,7 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
 @property (nonatomic, copy) NSString *sessionID;
 @property (nonatomic, copy, nullable) NSString *sessionToken;
 @property (nonatomic, copy) NSString *eventRuleMode;
+@property (nonatomic, strong, nullable) CBCentral *central;
 @property (nonatomic) BOOL linkSeen;
 @property (nonatomic) BOOL notifyEnabled;
 @property (nonatomic) NSUInteger maxUpdateLength;
@@ -25,6 +29,7 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
 @property (nonatomic) NSUInteger writeCount;
 @property (nonatomic) NSUInteger notifyCount;
 @property (nonatomic) NSUInteger eventCount;
+@property (nonatomic, strong) NSMutableArray<NSData *> *notifyQueue;
 @end
 
 @interface BLEPeripheralController () <CBPeripheralManagerDelegate>
@@ -35,8 +40,8 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
 @property (nonatomic, strong) NSMutableData *currentValue;
 @property (nonatomic) BOOL hasSubscribers;
 @property (nonatomic) BOOL servicesPublished;
-@property (nonatomic, strong, nullable) NSData *pendingNotifyPayload;
 @property (nonatomic, strong) NSMutableDictionary<NSUUID *, BLETrackedCentral *> *trackedCentrals;
+@property (nonatomic) NSUInteger notifyStreamCounter;
 
 @end
 
@@ -187,16 +192,12 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
                                                                  sequence:tracked.eventCount
                                                                   session:tracked.sessionID
                                                                      body:eventBody.copy];
-    BOOL didSend = [peripheral updateValue:eventData
-                         forCharacteristic:self.demoCharacteristic
-                      onSubscribedCentrals:central ? @[ central ] : nil];
-    if (didSend) {
-        tracked.notifyCount += 1;
-        [self logTX:central channel:@"notify/event" data:eventData extra:[NSString stringWithFormat:@"type=%@", type]];
-    } else {
-        self.pendingNotifyPayload = eventData;
-        [self logEvent:@"TX" detail:[NSString stringWithFormat:@"event queued: session=%@ type=%@", tracked.sessionID, type]];
-    }
+    [self enqueueNotifyPayload:eventData
+                    forCentral:central
+                        tracked:tracked
+                        channel:@"notify/event"
+                          extra:[NSString stringWithFormat:@"type=%@", type]];
+    [self flushNotifyQueueForCentral:central tracked:tracked peripheral:peripheral];
 }
 
 - (void)applyProtocolResult:(BLEProtocolHandlerResult *)protocolResult
@@ -305,18 +306,22 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
         return NO;
     }
 
-    BOOL didSend = [peripheral updateValue:self.currentValue
-                         forCharacteristic:self.demoCharacteristic
-                      onSubscribedCentrals:nil];
-    if (didSend) {
-        self.pendingNotifyPayload = nil;
-        [self logEvent:@"TX" detail:@"auto-push via Notify OK — phone should receive without Read"];
-        [self logPayloadContent:self.currentValue tag:@"TX"];
-    } else {
-        self.pendingNotifyPayload = [self.currentValue copy];
-        [self logEvent:@"TX" detail:@"auto-push queued — will retry when CoreBluetooth is ready"];
+    NSUInteger sentCount = 0;
+    for (BLETrackedCentral *tracked in self.trackedCentrals.allValues) {
+        if (!tracked.notifyEnabled) {
+            continue;
+        }
+        CBCentral *central = [self centralForTrackedCentral:tracked];
+        [self enqueueNotifyPayload:self.currentValue
+                        forCentral:central
+                            tracked:tracked
+                            channel:@"notify/reply"
+                              extra:@"auto-push latest value"];
+        if ([self flushNotifyQueueForCentral:central tracked:tracked peripheral:peripheral]) {
+            sentCount += 1;
+        }
     }
-    return didSend;
+    return sentCount > 0;
 }
 
 - (BOOL)pushReply:(NSData *)payload
@@ -324,29 +329,167 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
        peripheral:(CBPeripheralManager *)peripheral {
     BLETrackedCentral *tracked = [self trackedCentralForCentral:central createIfNeeded:YES];
     if (!tracked.notifyEnabled) {
-        self.pendingNotifyPayload = [payload copy];
+        [self enqueueNotifyPayload:payload
+                        forCentral:central
+                            tracked:tracked
+                            channel:@"notify/reply"
+                              extra:@"notify OFF; queued for subscribe"];
         [self logEvent:@"TX" detail:[NSString stringWithFormat:@"reply stored: session=%@ notify OFF, use Read FFF1", tracked.sessionID]];
         return NO;
     }
 
-    BOOL didSend = [peripheral updateValue:payload ?: NSData.data
-                         forCharacteristic:self.demoCharacteristic
-                      onSubscribedCentrals:central ? @[ central ] : nil];
-    if (didSend) {
-        tracked.notifyCount += 1;
-        self.pendingNotifyPayload = nil;
-        [self logTX:central channel:@"notify/reply" data:payload extra:@"targeted"];
-    } else {
-        self.pendingNotifyPayload = [payload copy];
-        [self logEvent:@"TX" detail:[NSString stringWithFormat:@"reply queued: session=%@ CoreBluetooth back-pressure", tracked.sessionID]];
-    }
-    return didSend;
+    [self enqueueNotifyPayload:payload
+                    forCentral:central
+                        tracked:tracked
+                        channel:@"notify/reply"
+                          extra:@"targeted"];
+    return [self flushNotifyQueueForCentral:central tracked:tracked peripheral:peripheral];
 }
 
 - (void)storeReplyAndAutoPush:(NSData *)responseData
                       peripheral:(CBPeripheralManager *)peripheral {
     [self.currentValue setData:responseData ?: NSData.data];
     [self pushAutoNotifyReply:peripheral];
+}
+
+- (void)enqueueNotifyPayload:(NSData *)payload
+                  forCentral:(nullable CBCentral *)central
+                      tracked:(BLETrackedCentral *)tracked
+                      channel:(NSString *)channel
+                        extra:(NSString *)extra {
+    NSArray<NSData *> *packets = [self notifyPacketsForPayload:payload ?: NSData.data trackedCentral:tracked];
+    [tracked.notifyQueue addObjectsFromArray:packets];
+    [self logEvent:@"TX" detail:[NSString stringWithFormat:@"queued %@ packet(s): session=%@ channel=%@ bytes=%lu %@",
+                                  @(packets.count),
+                                  tracked.sessionID,
+                                  channel,
+                                  (unsigned long)(payload ?: NSData.data).length,
+                                  extra.length > 0 ? extra : @""]];
+}
+
+- (BOOL)flushNotifyQueueForCentral:(nullable CBCentral *)central
+                            tracked:(BLETrackedCentral *)tracked
+                         peripheral:(CBPeripheralManager *)peripheral {
+    BOOL sentAny = NO;
+    while (tracked.notifyEnabled && tracked.notifyQueue.count > 0) {
+        NSData *packet = tracked.notifyQueue.firstObject;
+        BOOL didSend = [peripheral updateValue:packet
+                             forCharacteristic:self.demoCharacteristic
+                          onSubscribedCentrals:central ? @[ central ] : nil];
+        if (!didSend) {
+            [self logEvent:@"TX" detail:[NSString stringWithFormat:@"notify back-pressure: session=%@ queued=%lu",
+                                          tracked.sessionID,
+                                          (unsigned long)tracked.notifyQueue.count]];
+            return sentAny;
+        }
+        [tracked.notifyQueue removeObjectAtIndex:0];
+        tracked.notifyCount += 1;
+        sentAny = YES;
+        [self logTX:central
+            channel:@"notify/packet"
+               data:packet
+              extra:[NSString stringWithFormat:@"queued=%lu", (unsigned long)tracked.notifyQueue.count]];
+    }
+    return sentAny;
+}
+
+- (NSArray<NSData *> *)notifyPacketsForPayload:(NSData *)payload trackedCentral:(BLETrackedCentral *)tracked {
+    NSUInteger maxLength = tracked.maxUpdateLength > 0 ? tracked.maxUpdateLength : kDefaultNotifyChunkPayloadLength;
+    if (payload.length <= maxLength) {
+        return @[ payload ];
+    }
+
+    NSString *streamID = [self nextNotifyStreamIDForTrackedCentral:tracked];
+    NSUInteger rawChunkLength = [self rawChunkLengthForMaxUpdateLength:maxLength];
+    while (rawChunkLength > 0) {
+        NSUInteger chunkCount = (payload.length + rawChunkLength - 1) / rawChunkLength;
+        BOOL allPacketsFit = YES;
+        for (NSUInteger index = 0; index < chunkCount; index++) {
+            NSUInteger offset = index * rawChunkLength;
+            NSUInteger length = MIN(rawChunkLength, payload.length - offset);
+            NSData *packet = [self chunkPacketForPayload:payload
+                                                  stream:streamID
+                                                   index:index
+                                                   count:chunkCount
+                                                  offset:offset
+                                                  length:length
+                                               maxLength:maxLength];
+            if (packet.length == 0) {
+                allPacketsFit = NO;
+                break;
+            }
+        }
+        if (allPacketsFit) {
+            break;
+        }
+        rawChunkLength /= 2;
+    }
+
+    if (rawChunkLength == 0) {
+        [self logEvent:@"TX" detail:[NSString stringWithFormat:@"payload chunk failed: session=%@ bytes=%lu maxUpdate=%lu",
+                                      tracked.sessionID,
+                                      (unsigned long)payload.length,
+                                      (unsigned long)maxLength]];
+        return @[];
+    }
+
+    NSUInteger chunkCount = (payload.length + rawChunkLength - 1) / rawChunkLength;
+    NSMutableArray<NSData *> *packets = [NSMutableArray arrayWithCapacity:chunkCount];
+    for (NSUInteger index = 0; index < chunkCount; index++) {
+        NSUInteger offset = index * rawChunkLength;
+        NSUInteger length = MIN(rawChunkLength, payload.length - offset);
+        NSData *packet = [self chunkPacketForPayload:payload
+                                              stream:streamID
+                                               index:index
+                                               count:chunkCount
+                                              offset:offset
+                                              length:length
+                                           maxLength:maxLength];
+        if (packet.length > 0) {
+            [packets addObject:packet];
+        }
+    }
+    [self logEvent:@"TX" detail:[NSString stringWithFormat:@"payload chunked: session=%@ stream=%@ bytes=%lu chunks=%lu maxUpdate=%lu",
+                                  tracked.sessionID,
+                                  streamID,
+                                  (unsigned long)payload.length,
+                                  (unsigned long)chunkCount,
+                                  (unsigned long)maxLength]];
+    return packets.copy;
+}
+
+- (nullable NSData *)chunkPacketForPayload:(NSData *)payload
+                                    stream:(NSString *)streamID
+                                     index:(NSUInteger)index
+                                     count:(NSUInteger)count
+                                    offset:(NSUInteger)offset
+                                    length:(NSUInteger)length
+                                 maxLength:(NSUInteger)maxLength {
+    NSData *chunkData = [payload subdataWithRange:NSMakeRange(offset, length)];
+    NSDictionary *chunk = [BLEProtocolMessage chunkWithStreamID:streamID
+                                                          index:index
+                                                          count:count
+                                                           data:chunkData];
+    NSData *packet = [BLEProtocolMessage dataFromDictionary:chunk error:nil];
+    if (packet.length > 0 && packet.length <= maxLength) {
+        return packet;
+    }
+    return nil;
+}
+
+- (NSUInteger)rawChunkLengthForMaxUpdateLength:(NSUInteger)maxLength {
+    if (maxLength <= kNotifyChunkEnvelopeReserve + 16) {
+        return MAX((NSUInteger)1, maxLength / 4);
+    }
+    NSUInteger budget = maxLength - kNotifyChunkEnvelopeReserve;
+    return MAX((NSUInteger)1, (budget * 3) / 4);
+}
+
+- (NSString *)nextNotifyStreamIDForTrackedCentral:(BLETrackedCentral *)tracked {
+    self.notifyStreamCounter += 1;
+    return [NSString stringWithFormat:@"%@-%lu",
+            tracked.sessionID ?: @"stream",
+            (unsigned long)self.notifyStreamCounter];
 }
 
 #pragma mark - Central tracking & structured logs
@@ -367,7 +510,16 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
 }
 
 - (nullable BLETrackedCentral *)trackedCentralForCentral:(nullable CBCentral *)central createIfNeeded:(BOOL)createIfNeeded {
-    return [self trackedCentralForUUID:[self uuidForCentral:central] createIfNeeded:createIfNeeded];
+    BLETrackedCentral *tracked = [self trackedCentralForUUID:[self uuidForCentral:central] createIfNeeded:createIfNeeded];
+    if (central) {
+        tracked.central = central;
+        tracked.maxUpdateLength = central.maximumUpdateValueLength;
+    }
+    return tracked;
+}
+
+- (nullable CBCentral *)centralForTrackedCentral:(BLETrackedCentral *)tracked {
+    return tracked.central;
 }
 
 - (NSString *)shortSessionIDForUUID:(NSUUID *)uuid {
@@ -434,6 +586,7 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
     NSUUID *uuid = [self uuidForCentral:central];
     BLETrackedCentral *tracked = [self trackedCentralForUUID:uuid createIfNeeded:YES];
     if (central) {
+        tracked.central = central;
         tracked.maxUpdateLength = central.maximumUpdateValueLength;
     }
     if (tracked.linkSeen) {
@@ -453,6 +606,7 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
 - (void)logLinkNotifySubscribed:(CBCentral *)central {
     NSUUID *uuid = [self uuidForCentral:central];
     BLETrackedCentral *tracked = [self trackedCentralForUUID:uuid createIfNeeded:YES];
+    tracked.central = central;
     tracked.maxUpdateLength = central.maximumUpdateValueLength;
     tracked.notifyEnabled = YES;
     self.hasSubscribers = YES;
@@ -705,18 +859,17 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
     [self logLinkNotifySubscribed:central];
     [self logEvent:@"SYS" detail:@"Notify ON — write replies will auto-push (no Read needed)"];
 
-    if (self.currentValue.length > 0) {
+    BLETrackedCentral *tracked = [self trackedCentralForCentral:central createIfNeeded:YES];
+    BOOL hadQueuedReplies = tracked.notifyQueue.count > 0;
+    [self flushNotifyQueueForCentral:central tracked:tracked peripheral:peripheral];
+
+    if (!hadQueuedReplies && self.currentValue.length > 0) {
         [self pushReply:self.currentValue toCentral:central peripheral:peripheral];
-        BLETrackedCentral *tracked = [self trackedCentralForCentral:central createIfNeeded:YES];
-        [self pushSessionEventForCentral:central
-                                    type:@"subscribed"
-                                    body:@{ @"notifyMax": @(tracked.maxUpdateLength) }
-                              peripheral:peripheral];
     }
-    if (self.pendingNotifyPayload.length > 0) {
-        [self.currentValue setData:self.pendingNotifyPayload];
-        [self pushReply:self.pendingNotifyPayload toCentral:central peripheral:peripheral];
-    }
+    [self pushSessionEventForCentral:central
+                                type:@"subscribed"
+                                body:@{ @"notifyMax": @(tracked.maxUpdateLength) }
+                          peripheral:peripheral];
 }
 
 - (void)peripheralManager:(CBPeripheralManager *)peripheral central:(CBCentral *)central didUnsubscribeFromCharacteristic:(CBCharacteristic *)characteristic {
@@ -727,11 +880,15 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
 }
 
 - (void)peripheralManagerIsReadyToUpdateSubscribers:(CBPeripheralManager *)peripheral {
-    [self logEvent:@"TX" detail:@"notify queue ready — flushing pending auto-push"];
-    if (self.pendingNotifyPayload.length > 0) {
-        [self.currentValue setData:self.pendingNotifyPayload];
+    [self logEvent:@"TX" detail:@"notify queue ready — flushing subscribed central queues"];
+    for (BLETrackedCentral *tracked in self.trackedCentrals.allValues) {
+        if (!tracked.notifyEnabled) {
+            continue;
+        }
+        [self flushNotifyQueueForCentral:[self centralForTrackedCentral:tracked]
+                                  tracked:tracked
+                               peripheral:peripheral];
     }
-    [self pushAutoNotifyReply:peripheral];
 }
 
 - (BOOL)shouldPushWriteEventType:(NSString *)eventType
@@ -759,6 +916,7 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
     self = [super init];
     if (self) {
         _eventRuleMode = kEventRuleModeNormal;
+        _notifyQueue = [NSMutableArray array];
     }
     return self;
 }

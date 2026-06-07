@@ -23,4 +23,6 @@ You can also type `rule:quiet`, `rule:burst`, or `rule:normal` in the text field
 
 The scanner list shows RSSI, service/name hit reason, and last-seen time for each discovered peripheral.
 
+Oversized Notify replies/events arrive as JSON `op=chunk`; the app logs chunk progress, reassembles by stream/index, then parses the original protocol or legacy payload.
+
 Protocol details: [../ble_protocol.md](../ble_protocol.md)

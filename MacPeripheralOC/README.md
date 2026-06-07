@@ -19,8 +19,9 @@ macOS app that advertises `MacBLE-Demo` and exposes one GATT service for iPhone 
 | Mac 业务回复 | **Notify**（已订阅）或 **Read FFF1**（最后一次响应） |
 | 权限 | 可读、可写 |
 | 初始 Read 值 | `00 AA`（空 legacy 回显） |
-| 订阅后 Notify | 推送最近响应，并推送 JSON `op=event` session 事件 |
+| 订阅后 Notify | 推送排队响应/最近响应，并推送 JSON `op=event` session 事件 |
 | 写入 | JSON 协议请求 → 响应写入特征值；若已订阅则 **定向 notify 推送响应**；非协议 payload 走 legacy `00 AA` 回显 |
+| 长 Notify | 超过 Central `maximumUpdateValueLength` 时自动发送 JSON `op=chunk` 分片 |
 | 安全规则 | `pair` code `135790` → session token；`echo`/`telemetry`/`command` 需携带 token |
 | 能力发现 | `getInfo` 无需 token，返回 `operations`、`commands`、`events`、`eventRules`、`security`、`transport` |
 | 事件规则 | `setEventRule` 可切换 `normal`、`quiet`、`burst`，作用域为当前 Central session |
@@ -52,6 +53,8 @@ macOS app that advertises `MacBLE-Demo` and exposes one GATT service for iPhone 
 | `[SYS]` | 本机状态（蓝牙、广播、定时器） |
 
 每条 `[RX]`/`[TX]` 含：`central` UUID、通道名、字节数、UTF-8 预览（非文本则 hex）。
+
+Notify 已改为 per-Central 队列：Notify 关闭或 CoreBluetooth back-pressure 时先入队，订阅/ready 后按中央端 MTU flush；长 payload 以 `op=chunk` 分片，first-party Central 会自动重组。
 
 **说明：** macOS `CBPeripheralManager` 不提供可靠的「Central 已断链」委托；iPhone 完全断开后通常不再有 read/write，但 Mac 端不一定收到 `[LINK-] disconnected`。取消 notify 会明确打 `[LINK-] notify OFF`。
 

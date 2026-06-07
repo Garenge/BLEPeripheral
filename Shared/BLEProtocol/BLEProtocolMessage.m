@@ -124,6 +124,73 @@
     return [self successResponseForOperation:BLEProtocolOpEvent messageID:messageID body:eventBody];
 }
 
++ (NSDictionary *)chunkWithStreamID:(NSString *)streamID
+                              index:(NSUInteger)index
+                              count:(NSUInteger)count
+                               data:(NSData *)data {
+    NSString *messageID = [NSString stringWithFormat:@"chunk-%@-%lu",
+                           streamID ?: @"stream",
+                           (unsigned long)index];
+    return [self successResponseForOperation:BLEProtocolOpChunk
+                                   messageID:messageID
+                                        body:@{
+        @"stream": streamID ?: @"",
+        @"index": @(index),
+        @"count": @(count),
+        @"encoding": @"base64",
+        @"data": [data base64EncodedStringWithOptions:0] ?: @"",
+    }];
+}
+
++ (BOOL)isChunkEnvelope:(NSDictionary *)dictionary {
+    if (![self isProtocolEnvelope:dictionary]) {
+        return NO;
+    }
+    NSString *operation = dictionary[BLEProtocolKeyOperation];
+    return [operation isEqualToString:BLEProtocolOpChunk];
+}
+
++ (nullable NSData *)chunkPayloadFromEnvelope:(NSDictionary *)dictionary
+                                     streamID:(NSString * _Nullable * _Nullable)streamID
+                                        index:(NSUInteger * _Nullable)index
+                                        count:(NSUInteger * _Nullable)count {
+    if (![self isChunkEnvelope:dictionary]) {
+        return nil;
+    }
+
+    NSDictionary *body = [dictionary[BLEProtocolKeyBody] isKindOfClass:[NSDictionary class]] ? dictionary[BLEProtocolKeyBody] : nil;
+    NSString *stream = [body[@"stream"] isKindOfClass:[NSString class]] ? body[@"stream"] : nil;
+    NSNumber *chunkIndex = [body[@"index"] isKindOfClass:[NSNumber class]] ? body[@"index"] : nil;
+    NSNumber *chunkCount = [body[@"count"] isKindOfClass:[NSNumber class]] ? body[@"count"] : nil;
+    NSString *encoding = [body[@"encoding"] isKindOfClass:[NSString class]] ? body[@"encoding"] : nil;
+    NSString *encodedData = [body[@"data"] isKindOfClass:[NSString class]] ? body[@"data"] : nil;
+    if (stream.length == 0 || !chunkIndex || !chunkCount || ![encoding isEqualToString:@"base64"] || encodedData.length == 0) {
+        return nil;
+    }
+
+    NSUInteger indexValue = chunkIndex.unsignedIntegerValue;
+    NSUInteger countValue = chunkCount.unsignedIntegerValue;
+    if (countValue == 0 || indexValue >= countValue) {
+        return nil;
+    }
+
+    NSData *payload = [[NSData alloc] initWithBase64EncodedString:encodedData options:0];
+    if (!payload) {
+        return nil;
+    }
+
+    if (streamID) {
+        *streamID = stream;
+    }
+    if (index) {
+        *index = indexValue;
+    }
+    if (count) {
+        *count = countValue;
+    }
+    return payload;
+}
+
 + (NSString *)summaryForDictionary:(NSDictionary *)dictionary {
     NSString *operation = dictionary[BLEProtocolKeyOperation];
     id messageID = dictionary[BLEProtocolKeyMessageID];
