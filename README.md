@@ -92,23 +92,14 @@ open iOSCentralOC/BLECentral.xcodeproj
 
 Select your iPhone, set **Signing Team**, run **BLECentral** → **Scan** → connect `MacBLE-Demo`. The app auto-enables Notify and auto-pairs; then use **Pair**, **Ping**, **Info**, **Echo**, **Telemetry**, **Command**, **Raw**, **Read**, and **Notify On/Off**. Type `rule:quiet`, `rule:burst`, or `rule:normal` in the text field and tap **Command** to switch event rules.
 
-### Terminal build
+### Terminal verification
 
 ```bash
-# macOS Objective-C Peripheral
-xcodebuild -project MacPeripheralOC/BLEPeripheral.xcodeproj -scheme BLEPeripheral -configuration Debug build
+# Fast protocol + Flutter checks
+scripts/verify_ble_suite.sh
 
-# macOS Objective-C Central
-xcodebuild -project MacCentralOC/MacCentralOC.xcodeproj -scheme MacCentralOC -configuration Debug build
-
-# Flutter macOS Central
-cd FlutterCentral && flutter analyze && flutter test && flutter build macos --debug
-
-# Shared Objective-C BLE protocol smoke tests
-Shared/BLEProtocolTests/run_ble_protocol_smoke.sh
-
-# iOS Objective-C Central
-xcodebuild -project iOSCentralOC/BLECentral.xcodeproj -scheme BLECentral -configuration Debug -sdk iphoneos build
+# Full local build check for all first-party apps
+scripts/verify_ble_suite.sh --xcode
 ```
 
 ## BLE Profile
