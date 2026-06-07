@@ -123,7 +123,7 @@
                                       sessionID:sessionID
                                       eventCount:eventCount];
         result.commandName = commandName;
-        result.commandAccepted = [self acceptedCommandNames][commandName] != nil;
+        result.commandAccepted = commandName.length > 0 && [self acceptedCommandNames][commandName] != nil;
         result.shouldResetCounters = [commandName isEqualToString:@"resetCounters"];
     } else {
         response = [BLEProtocolMessage errorResponseWithMessageID:messageID

@@ -135,6 +135,20 @@ First-party protocol sequence:
 
 Demo commands: `identify`, `sample`, `resetCounters`.
 
+## Operation Matrix
+
+| UI action | BLE transport | Requires token | Expected result |
+|-----------|---------------|----------------|-----------------|
+| Pair | Write + Notify/Read | No | `paired` response with session token, then `event.type=paired` |
+| Ping | Write + Notify/Read | No | `pong` response for diagnostics |
+| Info | Write + Notify/Read | No | `info` response with GATT/profile metadata |
+| Echo | Write + Notify/Read | Yes | `echo` response with same text |
+| Telemetry | Write + Notify/Read | Yes | Session read/write/notify/event counters |
+| Command `identify` | Write + Notify | Yes | `commandResult`, then `event.type=command.identify` |
+| Command `sample` | Write + Notify | Yes | `commandResult`, then simulated sample telemetry event |
+| Command `resetCounters` | Write + Notify | Yes | `commandResult`, then counter reset event |
+| Raw | Write + Notify/Read | No | Legacy `00 AA` + original bytes |
+
 ## Next Work
 
 - Configurable profile + persistence
