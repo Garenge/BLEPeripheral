@@ -133,6 +133,8 @@ First-party protocol sequence:
 
 `scan` → `connect` → `discover FFF0/FFF1` → `notify on` → `pair(code=135790)` → `token` → protected `echo` / `telemetry` / `command` → `event` notifications
 
+Demo commands: `identify`, `sample`, `resetCounters`.
+
 ## Next Work
 
 - Configurable profile + persistence

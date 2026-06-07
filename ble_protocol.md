@@ -99,7 +99,15 @@ Server may also push `event` notifications (no request), with:
 }
 ```
 
-Event types currently include `subscribed`, `paired`, and `write`.
+Event types currently include `subscribed`, `paired`, `write`, `command.identify`, `command.sample`, and `command.resetCounters`.
+
+Supported demo commands:
+
+| command | side effect |
+|---------|-------------|
+| `identify` | Pushes a `command.identify` event with peripheral/service/characteristic identity. |
+| `sample` | Pushes a `command.sample` event with simulated battery/RSSI/temperature data. |
+| `resetCounters` | Resets the current session counters and pushes before/after counts. |
 
 ## Error codes
 

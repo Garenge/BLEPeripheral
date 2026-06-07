@@ -116,11 +116,15 @@
             @"ts": @((NSInteger)[NSDate.date timeIntervalSince1970]),
         }];
     } else if ([operation isEqualToString:BLEProtocolOpCommand]) {
+        NSString *commandName = [body[@"name"] isKindOfClass:[NSString class]] ? body[@"name"] : nil;
         response = [self commandResponseForBody:body
                                       messageID:messageID
                                           token:currentToken
                                       sessionID:sessionID
                                       eventCount:eventCount];
+        result.commandName = commandName;
+        result.commandAccepted = [self acceptedCommandNames][commandName] != nil;
+        result.shouldResetCounters = [commandName isEqualToString:@"resetCounters"];
     } else {
         response = [BLEProtocolMessage errorResponseWithMessageID:messageID
                                                              code:BLEProtocolErrorUnknownOperation
@@ -230,8 +234,9 @@
                                                       message:@"command requires body.name string."];
     }
 
-    NSArray<NSString *> *acceptedCommands = @[ @"identify", @"sample", @"resetCounters" ];
-    BOOL accepted = [acceptedCommands containsObject:name];
+    NSDictionary<NSString *, NSString *> *acceptedCommands = [self acceptedCommandNames];
+    NSString *effect = acceptedCommands[name];
+    BOOL accepted = effect.length > 0;
     return [BLEProtocolMessage successResponseForOperation:BLEProtocolOpCommandResult
                                                  messageID:messageID
                                                      token:token
@@ -240,8 +245,17 @@
         @"accepted": @(accepted),
         @"session": sessionID ?: @"",
         @"queuedEvent": @(eventCount + 1),
+        @"effect": effect ?: @"none",
         @"message": accepted ? @"Command accepted by demo peripheral." : @"Unknown demo command; logged only.",
     }];
+}
+
++ (NSDictionary<NSString *, NSString *> *)acceptedCommandNames {
+    return @{
+        @"identify": @"push identify event",
+        @"sample": @"push sample telemetry event",
+        @"resetCounters": @"reset session counters",
+    };
 }
 
 + (BOOL)operationRequiresToken:(NSString *)operation {

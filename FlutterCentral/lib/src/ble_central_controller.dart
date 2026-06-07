@@ -4,9 +4,9 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
+import 'ble_protocol_codec.dart';
+
 const String demoPeripheralName = 'MacBLE-Demo';
-const int bleProtocolVersion = 1;
-const String bleDefaultPairCode = '135790';
 final Guid demoServiceUuid = Guid('0000FFF0-0000-1000-8000-00805F9B34FB');
 final Guid demoCharacteristicUuid = Guid(
   '0000FFF1-0000-1000-8000-00805F9B34FB',
@@ -40,6 +40,7 @@ class BleCentralController extends ChangeNotifier {
   }
 
   final List<StreamSubscription<dynamic>> _subscriptions = [];
+  final BleProtocolCodec _protocolCodec = const BleProtocolCodec();
   final Map<String, DiscoveredBleDevice> _devicesById = {};
   final List<String> logs = [];
 
@@ -173,16 +174,12 @@ class BleCentralController extends ChangeNotifier {
       return;
     }
     _protocolSequence += 1;
-    final request = <String, Object?>{
-      'v': bleProtocolVersion,
-      'op': operation,
-      'id': 'flutter-$_protocolSequence',
-      'body': body,
-    };
-    if (includeToken && sessionToken != null) {
-      request['token'] = sessionToken;
-    }
-    final payload = utf8.encode(jsonEncode(request));
+    final payload = _protocolCodec.encodeRequest(
+      operation: operation,
+      messageId: 'flutter-$_protocolSequence',
+      body: body,
+      token: includeToken ? sessionToken : null,
+    );
     await characteristic.write(payload, withoutResponse: false);
     _log(
       'TX protocol $operation: ${payload.length} B token=${includeToken && sessionToken != null ? "yes" : "no"}',
@@ -282,76 +279,34 @@ class BleCentralController extends ChangeNotifier {
   }
 
   void _logIncoming(List<int> value, String label) {
-    if (_isEchoReply(value)) {
-      final body = value.sublist(2);
+    final decoded = _protocolCodec.decode(value);
+    if (decoded.kind == BleDecodedMessageKind.legacyEcho) {
       _log(
-        '$label echo: prefix=00AA body=${body.length} B text="${_decode(body)}"',
+        '$label echo: prefix=00AA body=${decoded.body.length} B text="${decoded.text}"',
       );
       return;
     }
-    final decoded = _tryDecodeJson(value);
-    if (decoded != null && decoded['v'] is num && decoded['op'] is String) {
-      _captureSessionToken(decoded);
-      final operation = decoded['op'];
-      final ok = decoded['ok'];
-      final id = decoded['id'] ?? '-';
-      final token = decoded['token'] is String ? 'yes' : 'no';
-      if (decoded['err'] is Map) {
-        final error = decoded['err'] as Map<dynamic, dynamic>;
+    if (decoded.kind == BleDecodedMessageKind.protocol) {
+      final envelope = decoded.envelope!;
+      _captureSessionToken(decoded.token);
+      final operation = envelope['op'];
+      _log('$label protocol: ${_protocolCodec.summaryForProtocol(envelope)}');
+      if (envelope['body'] is Map) {
         _log(
-          '$label protocol: op=$operation id=$id token=$token error=${error['code']} (${error['message']})',
-        );
-      } else {
-        _log('$label protocol: op=$operation id=$id token=$token ok=$ok');
-      }
-      if (decoded['body'] is Map) {
-        _log(
-          '${operation == "event" ? "EVT" : "RX"} body=${jsonEncode(decoded['body'])}',
+          '${operation == "event" ? "EVT" : "RX"} body=${jsonEncode(envelope['body'])}',
         );
       }
       return;
     }
-    _log('$label raw: ${value.length} B text="${_decode(value)}"');
+    _log('$label raw: ${decoded.bytes.length} B text="${decoded.text}"');
   }
 
-  Map<String, dynamic>? _tryDecodeJson(List<int> value) {
-    try {
-      final decoded = jsonDecode(utf8.decode(value));
-      return decoded is Map<String, dynamic> ? decoded : null;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  void _captureSessionToken(Map<String, dynamic> message) {
-    var token = message['token'];
-    final body = message['body'];
-    if (token is! String && body is Map<String, dynamic>) {
-      token = body['token'];
-    }
-    if (token is String && token.isNotEmpty && token != sessionToken) {
+  void _captureSessionToken(String? token) {
+    if (token != null && token.isNotEmpty && token != sessionToken) {
       sessionToken = token;
       _log('AUTH token captured: $token');
       notifyListeners();
     }
-  }
-
-  bool _isEchoReply(List<int> value) {
-    return value.length >= 2 && value[0] == 0x00 && value[1] == 0xAA;
-  }
-
-  String _decode(List<int> value) {
-    try {
-      return utf8.decode(value);
-    } catch (_) {
-      return _hex(value);
-    }
-  }
-
-  String _hex(List<int> value) {
-    return value
-        .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
-        .join(' ');
   }
 
   String _resultName(ScanResult result) {

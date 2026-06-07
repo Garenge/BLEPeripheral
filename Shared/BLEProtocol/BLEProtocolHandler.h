@@ -7,7 +7,10 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong) NSData *responseData;
 @property (nonatomic, copy) NSString *logSummary;
 @property (nonatomic, copy, nullable) NSString *sessionToken;
+@property (nonatomic, copy, nullable) NSString *commandName;
 @property (nonatomic) BOOL pairingSucceeded;
+@property (nonatomic) BOOL commandAccepted;
+@property (nonatomic) BOOL shouldResetCounters;
 
 @end
 

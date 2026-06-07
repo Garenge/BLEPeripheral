@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'src/ble_central_controller.dart';
+import 'src/ble_protocol_codec.dart';
 
 void main() {
   runApp(const FlutterCentralApp());

@@ -192,6 +192,66 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
     }
 }
 
+- (void)applyProtocolResult:(BLEProtocolHandlerResult *)protocolResult
+                 forCentral:(nullable CBCentral *)central
+                 peripheral:(CBPeripheralManager *)peripheral {
+    BLETrackedCentral *tracked = [self trackedCentralForCentral:central createIfNeeded:YES];
+    if (!protocolResult.commandAccepted) {
+        return;
+    }
+
+    NSDictionary *eventBody = [self commandEventBodyForName:protocolResult.commandName trackedCentral:tracked];
+    if (protocolResult.shouldResetCounters) {
+        tracked.readCount = 0;
+        tracked.writeCount = 0;
+        tracked.notifyCount = 0;
+        tracked.eventCount = 0;
+    }
+    [self pushSessionEventForCentral:central
+                                type:[NSString stringWithFormat:@"command.%@", protocolResult.commandName ?: @"unknown"]
+                                body:eventBody
+                          peripheral:peripheral];
+}
+
+- (NSDictionary *)commandEventBodyForName:(NSString *)name trackedCentral:(BLETrackedCentral *)tracked {
+    if ([name isEqualToString:@"identify"]) {
+        return @{
+            @"name": name,
+            @"peripheralName": kDemoPeripheralName,
+            @"service": @"FFF0",
+            @"characteristic": @"FFF1",
+            @"session": tracked.sessionID ?: @"",
+        };
+    }
+    if ([name isEqualToString:@"sample"]) {
+        NSUInteger base = tracked.writeCount + tracked.readCount + tracked.notifyCount + tracked.eventCount;
+        return @{
+            @"name": name,
+            @"battery": @(80 + (base % 15)),
+            @"rssiHint": @(-45 - (NSInteger)(base % 20)),
+            @"temperatureC": @(24 + (base % 5)),
+        };
+    }
+    if ([name isEqualToString:@"resetCounters"]) {
+        return @{
+            @"name": name,
+            @"before": @{
+                @"reads": @(tracked.readCount),
+                @"writes": @(tracked.writeCount),
+                @"notifies": @(tracked.notifyCount),
+                @"events": @(tracked.eventCount),
+            },
+            @"after": @{
+                @"reads": @0,
+                @"writes": @0,
+                @"notifies": @0,
+                @"events": @0,
+            },
+        };
+    }
+    return @{ @"name": name ?: @"unknown" };
+}
+
 - (BOOL)pushAutoNotifyReply:(CBPeripheralManager *)peripheral {
     if (![self anyCentralNotifyEnabled]) {
         [self logEvent:@"TX" detail:@"auto-push skipped — phone has NOT enabled Notify on FFF1 (must open Notify/CCCD, not Read)"];
@@ -582,6 +642,7 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
                 @"notifies": @(tracked.notifyCount),
             }
                                   peripheral:peripheral];
+            [self applyProtocolResult:protocolResult forCentral:central peripheral:peripheral];
         } else {
             [self pushReply:outgoing toCentral:central peripheral:peripheral];
         }
