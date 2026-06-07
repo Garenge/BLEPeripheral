@@ -315,7 +315,8 @@ class _BleCentralPageState extends State<BleCentralPage> {
         return ListTile(
           contentPadding: EdgeInsets.zero,
           title: Text(device.name),
-          subtitle: Text('${device.id}  RSSI ${device.rssi}'),
+          subtitle: Text('${device.id}\n${device.detailLabel}'),
+          isThreeLine: true,
           trailing: FilledButton(
             onPressed: () => _controller.connect(device.id),
             child: const Text('Connect'),

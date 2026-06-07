@@ -20,6 +20,7 @@ Pure macOS Objective-C app that scans for `MacBLE-Demo`, connects to service `FF
 
 - `CBCentralManager` state changes and scanning
 - `didDiscoverPeripheral` advertisement filtering
+- Scanner match metadata for RSSI, service/name hit reason, and last-seen time
 - `connectPeripheral` / `cancelPeripheralConnection`
 - `discoverServices` and `discoverCharacteristics`
 - `readValueForCharacteristic`

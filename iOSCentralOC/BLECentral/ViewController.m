@@ -260,10 +260,11 @@
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"DeviceCell"];
     if (!cell) {
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"DeviceCell"];
+        cell.detailTextLabel.numberOfLines = 2;
     }
     CBPeripheral *peripheral = self.centralController.discoveredPeripherals[indexPath.row];
     cell.textLabel.text = peripheral.name ?: @"Unnamed";
-    cell.detailTextLabel.text = peripheral.identifier.UUIDString;
+    cell.detailTextLabel.text = [self.centralController detailForDiscoveredPeripheralAtIndex:(NSUInteger)indexPath.row];
     return cell;
 }
 

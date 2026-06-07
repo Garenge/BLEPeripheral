@@ -21,4 +21,6 @@ You can also type `rule:quiet`, `rule:burst`, or `rule:normal` in the text field
 
 `info` responses log a `CAP` summary for supported operations, commands, event rules, security, and transport hints.
 
+The scanner list shows RSSI, service/name hit reason, and last-seen time for each discovered peripheral.
+
 Protocol details: [../ble_protocol.md](../ble_protocol.md)

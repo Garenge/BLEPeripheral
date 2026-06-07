@@ -20,6 +20,7 @@ typedef void (^BLECentralDiscoveryHandler)(void);
 - (void)startScan;
 - (void)stopScan;
 - (void)connectPeripheral:(CBPeripheral *)peripheral;
+- (NSString *)detailForDiscoveredPeripheralAtIndex:(NSUInteger)index;
 - (void)disconnect;
 - (void)readCharacteristic;
 - (void)subscribeNotifications:(BOOL)subscribe;

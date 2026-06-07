@@ -17,11 +17,31 @@ class DiscoveredBleDevice {
     required this.id,
     required this.name,
     required this.rssi,
+    required this.matchReason,
+    required this.lastSeen,
+    required this.serviceCount,
+    required this.manufacturerDataCount,
+    required this.serviceDataCount,
   });
 
   final String id;
   final String name;
   final int rssi;
+  final String matchReason;
+  final DateTime lastSeen;
+  final int serviceCount;
+  final int manufacturerDataCount;
+  final int serviceDataCount;
+
+  String get detailLabel {
+    return 'RSSI $rssi | $matchReason | seen $_lastSeenLabel | adv services=$serviceCount msd=$manufacturerDataCount svcData=$serviceDataCount';
+  }
+
+  String get _lastSeenLabel {
+    return '${lastSeen.hour.toString().padLeft(2, '0')}:'
+        '${lastSeen.minute.toString().padLeft(2, '0')}:'
+        '${lastSeen.second.toString().padLeft(2, '0')}';
+  }
 }
 
 class BleCentralController extends ChangeNotifier {
@@ -54,7 +74,11 @@ class BleCentralController extends ChangeNotifier {
   String? capabilitySummary;
   String eventRuleMode = 'normal';
 
-  List<DiscoveredBleDevice> get devices => _devicesById.values.toList();
+  List<DiscoveredBleDevice> get devices {
+    final devices = _devicesById.values.toList();
+    devices.sort((a, b) => b.rssi.compareTo(a.rssi));
+    return devices;
+  }
 
   String get adapterLabel => 'Bluetooth: ${_adapterState.name}';
 
@@ -231,12 +255,24 @@ class BleCentralController extends ChangeNotifier {
         continue;
       }
       final id = result.device.remoteId.str;
+      final previous = _devicesById[id];
+      final matchReason = _scanMatchReason(result, name);
       _devicesById[id] = DiscoveredBleDevice(
         id: id,
         name: name.isEmpty ? '(unknown)' : name,
         rssi: result.rssi,
+        matchReason: matchReason,
+        lastSeen: DateTime.now(),
+        serviceCount: result.advertisementData.serviceUuids.length,
+        manufacturerDataCount: result.advertisementData.manufacturerData.length,
+        serviceDataCount: result.advertisementData.serviceData.length,
       );
-      _log('SCAN found: ${name.isEmpty ? id : name} RSSI=${result.rssi}');
+      if (previous == null || (previous.rssi - result.rssi).abs() >= 8) {
+        final action = previous == null ? 'found' : 'updated';
+        _log(
+          'SCAN $action: ${name.isEmpty ? id : name} RSSI=${result.rssi} match=$matchReason',
+        );
+      }
     }
     notifyListeners();
   }
@@ -348,6 +384,20 @@ class BleCentralController extends ChangeNotifier {
     return result.advertisementData.advName.isNotEmpty
         ? result.advertisementData.advName
         : result.device.platformName;
+  }
+
+  String _scanMatchReason(ScanResult result, String name) {
+    final reasons = <String>[];
+    if (result.advertisementData.serviceUuids.contains(demoServiceUuid)) {
+      reasons.add('service FFF0');
+    }
+    if (name == demoPeripheralName) {
+      reasons.add('name');
+    }
+    if (reasons.isEmpty) {
+      reasons.add('service filter');
+    }
+    return reasons.join('+');
   }
 
   String _deviceName(BluetoothDevice device) {

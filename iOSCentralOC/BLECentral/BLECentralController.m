@@ -7,14 +7,24 @@ static NSString * const kServiceUUIDString = @"0000FFF0-0000-1000-8000-00805F9B3
 static NSString * const kCharacteristicUUIDString = @"0000FFF1-0000-1000-8000-00805F9B34FB";
 static NSString * const kEventRuleModeNormal = @"normal";
 
+@interface BLEDiscoveredDeviceRecord : NSObject
+
+@property (nonatomic, strong) CBPeripheral *peripheral;
+@property (nonatomic, strong) NSNumber *RSSI;
+@property (nonatomic, copy) NSString *displayName;
+@property (nonatomic, copy) NSString *matchReason;
+@property (nonatomic, strong) NSDate *lastSeen;
+
+@end
+
 @interface BLECentralController () <CBCentralManagerDelegate, CBPeripheralDelegate>
 
 @property (nonatomic, copy) BLECentralLogHandler logHandler;
 @property (nonatomic, strong) CBCentralManager *centralManager;
 @property (nonatomic, strong, nullable) CBPeripheral *connectedPeripheral;
 @property (nonatomic, strong, nullable) CBCharacteristic *demoCharacteristic;
-@property (nonatomic, strong) NSMutableArray<CBPeripheral *> *mutableDiscoveredPeripherals;
-@property (nonatomic, strong) NSMutableSet<NSUUID *> *discoveredIDs;
+@property (nonatomic, strong) NSMutableArray<BLEDiscoveredDeviceRecord *> *mutableDiscoveredDevices;
+@property (nonatomic, strong) NSMutableDictionary<NSUUID *, BLEDiscoveredDeviceRecord *> *discoveredRecords;
 @property (nonatomic) NSUInteger protocolSequence;
 @property (nonatomic, copy, nullable) NSString *sessionToken;
 @property (nonatomic, copy) NSString *eventRuleMode;
@@ -30,8 +40,8 @@ static NSString * const kEventRuleModeNormal = @"normal";
     self = [super init];
     if (self) {
         _logHandler = [logHandler copy];
-        _mutableDiscoveredPeripherals = [NSMutableArray array];
-        _discoveredIDs = [NSMutableSet set];
+        _mutableDiscoveredDevices = [NSMutableArray array];
+        _discoveredRecords = [NSMutableDictionary dictionary];
         _eventRuleMode = kEventRuleModeNormal;
         _centralManager = [[CBCentralManager alloc] initWithDelegate:self queue:nil];
     }
@@ -39,7 +49,11 @@ static NSString * const kEventRuleModeNormal = @"normal";
 }
 
 - (NSArray<CBPeripheral *> *)discoveredPeripherals {
-    return self.mutableDiscoveredPeripherals.copy;
+    NSMutableArray<CBPeripheral *> *peripherals = [NSMutableArray array];
+    for (BLEDiscoveredDeviceRecord *record in self.mutableDiscoveredDevices) {
+        [peripherals addObject:record.peripheral];
+    }
+    return peripherals.copy;
 }
 
 - (BOOL)isScanning {
@@ -60,11 +74,11 @@ static NSString * const kEventRuleModeNormal = @"normal";
         return;
     }
 
-    [self.mutableDiscoveredPeripherals removeAllObjects];
-    [self.discoveredIDs removeAllObjects];
+    [self.mutableDiscoveredDevices removeAllObjects];
+    [self.discoveredRecords removeAllObjects];
 
     CBUUID *serviceUUID = [CBUUID UUIDWithString:kServiceUUIDString];
-    [self.centralManager scanForPeripheralsWithServices:@[serviceUUID] options:@{ CBCentralManagerScanOptionAllowDuplicatesKey: @NO }];
+    [self.centralManager scanForPeripheralsWithServices:@[serviceUUID] options:@{ CBCentralManagerScanOptionAllowDuplicatesKey: @YES }];
     self.scanning = YES;
     [self log:@"Scanning for service FFF0..."];
 }
@@ -84,6 +98,21 @@ static NSString * const kEventRuleModeNormal = @"normal";
     peripheral.delegate = self;
     [self.centralManager connectPeripheral:peripheral options:nil];
     [self log:[NSString stringWithFormat:@"Connecting to %@...", peripheral.name ?: peripheral.identifier.UUIDString]];
+}
+
+- (NSString *)detailForDiscoveredPeripheralAtIndex:(NSUInteger)index {
+    if (index >= self.mutableDiscoveredDevices.count) {
+        return @"";
+    }
+    BLEDiscoveredDeviceRecord *record = self.mutableDiscoveredDevices[index];
+    NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+    formatter.dateFormat = @"HH:mm:ss";
+    NSString *seen = [formatter stringFromDate:record.lastSeen ?: NSDate.date];
+    return [NSString stringWithFormat:@"%@ | RSSI %@ | %@ | seen %@",
+            record.peripheral.identifier.UUIDString,
+            record.RSSI ?: @(0),
+            record.matchReason,
+            seen];
 }
 
 - (void)disconnect {
@@ -220,18 +249,26 @@ static NSString * const kEventRuleModeNormal = @"normal";
 }
 
 - (void)centralManager:(CBCentralManager *)central didDiscoverPeripheral:(CBPeripheral *)peripheral advertisementData:(NSDictionary<NSString *,id> *)advertisementData RSSI:(NSNumber *)RSSI {
-    if ([self.discoveredIDs containsObject:peripheral.identifier]) {
-        return;
-    }
-
     NSString *name = peripheral.name ?: advertisementData[CBAdvertisementDataLocalNameKey];
     if (name.length > 0 && ![name isEqualToString:kTargetPeripheralName]) {
         return;
     }
 
-    [self.discoveredIDs addObject:peripheral.identifier];
-    [self.mutableDiscoveredPeripherals addObject:peripheral];
-    [self log:[NSString stringWithFormat:@"Discovered: %@ RSSI=%@", name ?: peripheral.identifier.UUIDString, RSSI]];
+    BLEDiscoveredDeviceRecord *record = self.discoveredRecords[peripheral.identifier];
+    BOOL isNew = record == nil;
+    if (isNew) {
+        record = [[BLEDiscoveredDeviceRecord alloc] init];
+        record.peripheral = peripheral;
+        [self.mutableDiscoveredDevices addObject:record];
+        self.discoveredRecords[peripheral.identifier] = record;
+    }
+    NSInteger previousRSSI = record.RSSI.integerValue;
+    [self updateDiscoveredRecord:record advertisementData:advertisementData RSSI:RSSI name:name];
+    [self sortDiscoveredDevicesByRSSI];
+    if (isNew || labs(previousRSSI - record.RSSI.integerValue) >= 8) {
+        NSString *action = isNew ? @"Discovered" : @"Updated";
+        [self log:[NSString stringWithFormat:@"%@: %@ RSSI=%@ match=%@", action, record.displayName, record.RSSI, record.matchReason]];
+    }
     if (self.discoveryHandler) {
         self.discoveryHandler();
     }
@@ -364,6 +401,37 @@ static NSString * const kEventRuleModeNormal = @"normal";
     [self log:[NSString stringWithFormat:@"RULE mode=%@", mode]];
 }
 
+- (void)updateDiscoveredRecord:(BLEDiscoveredDeviceRecord *)record
+             advertisementData:(NSDictionary<NSString *, id> *)advertisementData
+                          RSSI:(NSNumber *)RSSI
+                          name:(NSString *)name {
+    record.RSSI = RSSI ?: @(0);
+    record.displayName = name.length > 0 ? name : @"Unnamed";
+    record.matchReason = [self matchReasonForAdvertisementData:advertisementData name:name];
+    record.lastSeen = NSDate.date;
+}
+
+- (void)sortDiscoveredDevicesByRSSI {
+    [self.mutableDiscoveredDevices sortUsingComparator:^NSComparisonResult(BLEDiscoveredDeviceRecord *first, BLEDiscoveredDeviceRecord *second) {
+        return [second.RSSI compare:first.RSSI];
+    }];
+}
+
+- (NSString *)matchReasonForAdvertisementData:(NSDictionary<NSString *, id> *)advertisementData name:(NSString *)name {
+    NSMutableArray<NSString *> *reasons = [NSMutableArray array];
+    NSArray<CBUUID *> *serviceUUIDs = [advertisementData[CBAdvertisementDataServiceUUIDsKey] isKindOfClass:[NSArray class]] ? advertisementData[CBAdvertisementDataServiceUUIDsKey] : @[];
+    if ([serviceUUIDs containsObject:[CBUUID UUIDWithString:kServiceUUIDString]]) {
+        [reasons addObject:@"service FFF0"];
+    }
+    if ([name isEqualToString:kTargetPeripheralName]) {
+        [reasons addObject:@"name"];
+    }
+    if (reasons.count == 0) {
+        [reasons addObject:@"service filter"];
+    }
+    return [reasons componentsJoinedByString:@"+"];
+}
+
 - (void)peripheral:(CBPeripheral *)peripheral didWriteValueForCharacteristic:(CBCharacteristic *)characteristic error:(NSError *)error {
     if (error) {
         [self log:[NSString stringWithFormat:@"Write failed: %@", error.localizedDescription]];
@@ -388,4 +456,7 @@ static NSString * const kEventRuleModeNormal = @"normal";
     }
 }
 
+@end
+
+@implementation BLEDiscoveredDeviceRecord
 @end

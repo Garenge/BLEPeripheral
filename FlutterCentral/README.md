@@ -16,6 +16,7 @@ After connecting, the app auto-enables Notify, sends Pair code `135790`, and req
 
 - `FlutterBluePlus.adapterState`
 - `FlutterBluePlus.startScan` with service `FFF0`
+- Scanner match metadata for RSSI, service/name hit reason, last-seen time, and advertisement payload counts
 - `BluetoothDevice.connect`
 - `discoverServices`
 - `BluetoothCharacteristic.read`
