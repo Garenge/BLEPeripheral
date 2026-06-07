@@ -17,6 +17,8 @@ Scheme **BLECentral** → physical **iPhone** → configure signing → Run.
 
 Start the Mac peripheral first. Tap **Scan**, select `MacBLE-Demo`, and the app auto-enables Notify, Pair code `135790`, and `getInfo` capability discovery. Use **Pair**, **Ping**, **Info**, **Echo**, **Telemetry**, **Command**, **Raw**, **Read**, and **Notify On/Off** to compare protocol and legacy BLE behavior.
 
+Type `rule:quiet`, `rule:burst`, or `rule:normal` in the text field and tap **Command** to switch event association rules.
+
 `info` responses log a `CAP` summary for supported operations, commands, event rules, security, and transport hints.
 
 Protocol details: [../ble_protocol.md](../ble_protocol.md)

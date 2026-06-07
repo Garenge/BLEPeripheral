@@ -23,6 +23,7 @@ macOS app that advertises `MacBLE-Demo` and exposes one GATT service for iPhone 
 | 写入 | JSON 协议请求 → 响应写入特征值；若已订阅则 **定向 notify 推送响应**；非协议 payload 走 legacy `00 AA` 回显 |
 | 安全规则 | `pair` code `135790` → session token；`echo`/`telemetry`/`command` 需携带 token |
 | 能力发现 | `getInfo` 无需 token，返回 `operations`、`commands`、`events`、`eventRules`、`security`、`transport` |
+| 事件规则 | `setEventRule` 可切换 `normal`、`quiet`、`burst`，作用域为当前 Central session |
 
 启动后日志窗口会打印 `--- Mac BLE GATT profile ---` 摘要（与上表一致）。
 

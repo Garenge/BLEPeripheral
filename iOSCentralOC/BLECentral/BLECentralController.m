@@ -132,6 +132,15 @@ static NSString * const kCharacteristicUUIDString = @"0000FFF1-0000-1000-8000-00
     [self sendProtocolOperation:BLEProtocolOpCommand body:@{ @"name": name ?: @"identify" } includeToken:YES];
 }
 
+- (void)sendProtocolEventRuleMode:(NSString *)mode {
+    [self sendProtocolOperation:BLEProtocolOpCommand
+                           body:@{
+        @"name": @"setEventRule",
+        @"mode": mode ?: @"normal",
+    }
+                   includeToken:YES];
+}
+
 - (void)sendLegacyText:(NSString *)text {
     NSData *data = [(text ?: @"") dataUsingEncoding:NSUTF8StringEncoding];
     [self writeData:data label:@"legacy"];

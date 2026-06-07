@@ -8,9 +8,11 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy) NSString *logSummary;
 @property (nonatomic, copy, nullable) NSString *sessionToken;
 @property (nonatomic, copy, nullable) NSString *commandName;
+@property (nonatomic, copy, nullable) NSString *requestedEventRuleMode;
 @property (nonatomic) BOOL pairingSucceeded;
 @property (nonatomic) BOOL commandAccepted;
 @property (nonatomic) BOOL shouldResetCounters;
+@property (nonatomic) BOOL shouldSetEventRuleMode;
 
 @end
 
@@ -28,7 +30,8 @@ NS_ASSUME_NONNULL_BEGIN
                                            readCount:(NSUInteger)readCount
                                           writeCount:(NSUInteger)writeCount
                                          notifyCount:(NSUInteger)notifyCount
-                                          eventCount:(NSUInteger)eventCount;
+                                          eventCount:(NSUInteger)eventCount
+                                      eventRuleMode:(nullable NSString *)eventRuleMode;
 
 + (nullable NSData *)responseDataForRequestData:(NSData *)requestData
                                  peripheralName:(NSString *)peripheralName

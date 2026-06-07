@@ -80,8 +80,8 @@ Error response:
 | `ping` | `pong` | optional | `ts` (unix seconds), `platform`, `session` |
 | `getInfo` | `info` | optional | GATT/profile metadata plus `capabilitySchema`, `operations`, `commands`, `events`, `eventRules`, `security`, `transport` |
 | `echo` | `echo` | `text` string, requires token | same `text` |
-| `telemetry` | `telemetry` | optional, requires token | session-scoped `reads`, `writes`, `notifies`, `events`, `ts` |
-| `command` | `commandResult` | `name` string, requires token | `name`, `accepted`, `session`, `queuedEvent`, `message` |
+| `telemetry` | `telemetry` | optional, requires token | session-scoped `reads`, `writes`, `notifies`, `events`, `eventRuleMode`, `ts` |
+| `command` | `commandResult` | `name` string, requires token | `name`, `accepted`, `session`, `queuedEvent`, `eventRuleMode`, `message` |
 
 Server may also push `event` notifications (no request), with:
 
@@ -100,7 +100,7 @@ Server may also push `event` notifications (no request), with:
 }
 ```
 
-Event types currently include `subscribed`, `paired`, `write`, `command.identify`, `command.sample`, and `command.resetCounters`.
+Event types currently include `subscribed`, `paired`, `write`, `command.identify`, `command.sample`, `command.sample.detail`, `command.resetCounters`, and `event.ruleChanged`.
 
 ## Capability Discovery
 
@@ -115,8 +115,29 @@ Event types currently include `subscribed`, `paired`, `write`, `command.identify
 | `commands` | Supported demo command descriptors with emitted event type |
 | `events` | Server event descriptors and triggers |
 | `eventRules` | Human-readable event association rules |
+| `eventRuleModes` | Supported session modes: `normal`, `quiet`, `burst` |
 | `security` | Pairing/token placement and scope hints |
 | `transport` | Scan/write/notify/read behavior and legacy fallback |
+
+## Event Rule Modes
+
+The event rule mode is per Central session. It defaults to `normal`, appears in `info`, `telemetry`, `commandResult`, and event bodies, and can be changed with:
+
+```json
+{
+  "v": 1,
+  "op": "command",
+  "id": "ios-7",
+  "token": "tok-12345678",
+  "body": { "name": "setEventRule", "mode": "burst" }
+}
+```
+
+| mode | behavior |
+|------|----------|
+| `normal` | Default: replies plus write/session events and command-specific events. |
+| `quiet` | Suppresses ordinary `write` events while keeping pair and rule-change events. |
+| `burst` | Keeps normal behavior and adds `command.sample.detail` after `command sample`. |
 
 Supported demo commands:
 
@@ -125,6 +146,7 @@ Supported demo commands:
 | `identify` | Pushes a `command.identify` event with peripheral/service/characteristic identity. |
 | `sample` | Pushes a `command.sample` event with simulated battery/RSSI/temperature data. |
 | `resetCounters` | Resets the current session counters and pushes before/after counts. |
+| `setEventRule` | Switches `eventRuleMode` to `normal`, `quiet`, or `burst`, then pushes `event.ruleChanged`. |
 
 ## Error codes
 

@@ -156,6 +156,13 @@ class BleCentralController extends ChangeNotifier {
     await _sendProtocol('command', {'name': name}, includeToken: true);
   }
 
+  Future<void> sendEventRuleMode(String mode) async {
+    await _sendProtocol('command', {
+      'name': 'setEventRule',
+      'mode': mode,
+    }, includeToken: true);
+  }
+
   Future<void> sendRawText(String text) async {
     final characteristic = demoCharacteristic;
     if (characteristic == null) {

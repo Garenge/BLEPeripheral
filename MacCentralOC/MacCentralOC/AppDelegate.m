@@ -138,7 +138,7 @@
 
     self.payloadField = [[NSTextField alloc] initWithFrame:NSZeroRect];
     self.payloadField.stringValue = @"hello from Objective-C macOS";
-    self.payloadField.placeholderString = @"Echo payload or command name";
+    self.payloadField.placeholderString = @"Echo, command, or rule:quiet";
     self.payloadField.translatesAutoresizingMaskIntoConstraints = NO;
     [self.payloadField.widthAnchor constraintGreaterThanOrEqualToConstant:300].active = YES;
 
@@ -252,6 +252,11 @@
 
 - (void)commandTapped:(id)sender {
     NSString *name = self.payloadField.stringValue.length > 0 ? self.payloadField.stringValue : @"identify";
+    NSString *ruleMode = [self eventRuleModeFromCommandText:name];
+    if (ruleMode.length > 0) {
+        [self.centralController sendEventRuleMode:ruleMode];
+        return;
+    }
     [self.centralController sendCommandNamed:name];
 }
 
@@ -265,6 +270,14 @@
 
 - (void)notifyTapped:(id)sender {
     [self.centralController setNotifyEnabled:!self.centralController.isNotifyEnabled];
+}
+
+- (nullable NSString *)eventRuleModeFromCommandText:(NSString *)text {
+    NSString *prefix = @"rule:";
+    if (![text hasPrefix:prefix]) {
+        return nil;
+    }
+    return [text substringFromIndex:prefix.length];
 }
 
 #pragma mark - UI state

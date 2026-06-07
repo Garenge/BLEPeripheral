@@ -14,6 +14,7 @@ Pure macOS Objective-C app that scans for `MacBLE-Demo`, connects to service `FF
 4. Click **Scan**, select `MacBLE-Demo`, click **Connect**.
 5. The app auto-enables Notify, sends Pair code `135790`, then requests `getInfo` capability discovery.
 6. Use **Pair**, **Ping**, **Info**, **Echo**, **Telemetry**, **Command**, **Raw**, **Read**, and **Notify On/Off** to observe the GATT lifecycle.
+7. Type `rule:quiet`, `rule:burst`, or `rule:normal` in the payload field and click **Command** to switch event association rules.
 
 ## What This Project Teaches
 
@@ -26,6 +27,7 @@ Pure macOS Objective-C app that scans for `MacBLE-Demo`, connects to service `FF
 - `setNotifyValue` and notification callbacks
 - Session token capture from JSON `paired` responses
 - Capability discovery from JSON `info` responses
+- Event rule switching through `command setEventRule`
 - Multi-event correlation: subscribe/write/read/reply/event logs
 
 ## Sources
@@ -40,4 +42,5 @@ Pure macOS Objective-C app that scans for `MacBLE-Demo`, connects to service `FF
 - Characteristic: `0000FFF1-0000-1000-8000-00805F9B34FB`
 - Protocol rule: Pair with `135790`, then include token for `echo`, `telemetry`, and `command`
 - Capability rule: `getInfo` is open and returns supported operations, commands, event rules, security, and transport hints
+- Event rule: `setEventRule` switches `normal`, `quiet`, or `burst` per Central session
 - Raw rule: write any non-protocol payload, receive `00 AA` + original payload by notify or read

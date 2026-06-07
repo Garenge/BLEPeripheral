@@ -14,5 +14,7 @@ void main() {
     expect(find.text('Flutter macOS BLE Central'), findsOneWidget);
     expect(find.text('Target service FFF0, name MacBLE-Demo'), findsOneWidget);
     expect(find.text('Pair code'), findsOneWidget);
+    expect(find.text('Rule Quiet'), findsOneWidget);
+    expect(find.text('Rule Burst'), findsOneWidget);
   });
 }

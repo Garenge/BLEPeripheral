@@ -23,10 +23,11 @@
                                            sessionID:(NSString *)sessionID
                                             pairCode:(NSString *)pairCode
                                         currentToken:(NSString *)currentToken
-                                           readCount:(NSUInteger)readCount
-                                          writeCount:(NSUInteger)writeCount
-                                         notifyCount:(NSUInteger)notifyCount
-                                          eventCount:(NSUInteger)eventCount {
+                                          readCount:(NSUInteger)readCount
+                                         writeCount:(NSUInteger)writeCount
+                                        notifyCount:(NSUInteger)notifyCount
+                                         eventCount:(NSUInteger)eventCount
+                                      eventRuleMode:(NSString *)eventRuleMode {
     BLEProtocolHandlerResult *result = [[BLEProtocolHandlerResult alloc] init];
     NSError *parseError = nil;
     NSDictionary *request = [BLEProtocolMessage dictionaryFromData:requestData error:&parseError];
@@ -96,13 +97,15 @@
                                                               body:[self infoResponseBodyWithPeripheralName:peripheralName
                                                                                                 serviceUUID:serviceUUID
                                                                                          characteristicUUID:characteristicUUID
-                                                                                                  sessionID:sessionID]];
+                                                                                                  sessionID:sessionID
+                                                                                              eventRuleMode:eventRuleMode]];
     } else if ([operation isEqualToString:BLEProtocolOpTelemetry]) {
         response = [BLEProtocolMessage successResponseForOperation:BLEProtocolOpTelemetry
                                                          messageID:messageID
                                                              token:currentToken
                                                               body:@{
             @"session": sessionID ?: @"",
+            @"eventRuleMode": [self normalizedEventRuleMode:eventRuleMode],
             @"reads": @(readCount),
             @"writes": @(writeCount),
             @"notifies": @(notifyCount),
@@ -116,10 +119,15 @@
                                       messageID:messageID
                                           token:currentToken
                                       sessionID:sessionID
-                                      eventCount:eventCount];
+                                      eventCount:eventCount
+                                   eventRuleMode:eventRuleMode];
         result.commandName = commandName;
-        result.commandAccepted = commandName.length > 0 && [self acceptedCommandNames][commandName] != nil;
-        result.shouldResetCounters = [commandName isEqualToString:@"resetCounters"];
+        result.commandAccepted = [self commandNameWasAccepted:commandName response:response];
+        result.shouldResetCounters = result.commandAccepted && [commandName isEqualToString:@"resetCounters"];
+        result.shouldSetEventRuleMode = result.commandAccepted && [commandName isEqualToString:@"setEventRule"];
+        if (result.shouldSetEventRuleMode) {
+            result.requestedEventRuleMode = [self normalizedEventRuleMode:body[@"mode"]];
+        }
     } else {
         response = [BLEProtocolMessage errorResponseWithMessageID:messageID
                                                              code:BLEProtocolErrorUnknownOperation
@@ -147,7 +155,8 @@
                                                           readCount:0
                                                          writeCount:0
                                                         notifyCount:0
-                                                         eventCount:0];
+                                                         eventCount:0
+                                                     eventRuleMode:nil];
     if (logSummaryOut) {
         *logSummaryOut = result.logSummary;
     }
@@ -221,17 +230,25 @@
                                 messageID:(NSString *)messageID
                                     token:(NSString *)token
                                 sessionID:(NSString *)sessionID
-                                eventCount:(NSUInteger)eventCount {
+                                eventCount:(NSUInteger)eventCount
+                             eventRuleMode:(NSString *)eventRuleMode {
     NSString *name = [body[@"name"] isKindOfClass:[NSString class]] ? body[@"name"] : nil;
     if (name.length == 0) {
         return [BLEProtocolMessage errorResponseWithMessageID:messageID
                                                          code:BLEProtocolErrorInvalidBody
                                                       message:@"command requires body.name string."];
     }
+    if ([name isEqualToString:@"setEventRule"] &&
+        ![self isSupportedEventRuleMode:body[@"mode"]]) {
+        return [BLEProtocolMessage errorResponseWithMessageID:messageID
+                                                         code:BLEProtocolErrorInvalidBody
+                                                      message:@"setEventRule requires body.mode normal, quiet, or burst."];
+    }
 
     NSDictionary<NSString *, NSString *> *acceptedCommands = [self acceptedCommandNames];
     NSString *effect = acceptedCommands[name];
     BOOL accepted = effect.length > 0;
+    NSString *nextRuleMode = [name isEqualToString:@"setEventRule"] ? [self normalizedEventRuleMode:body[@"mode"]] : [self normalizedEventRuleMode:eventRuleMode];
     return [BLEProtocolMessage successResponseForOperation:BLEProtocolOpCommandResult
                                                  messageID:messageID
                                                      token:token
@@ -241,6 +258,7 @@
         @"session": sessionID ?: @"",
         @"queuedEvent": @(eventCount + 1),
         @"effect": effect ?: @"none",
+        @"eventRuleMode": nextRuleMode,
         @"message": accepted ? @"Command accepted by demo peripheral." : @"Unknown demo command; logged only.",
     }];
 }
@@ -250,13 +268,15 @@
         @"identify": @"push identify event",
         @"sample": @"push sample telemetry event",
         @"resetCounters": @"reset session counters",
+        @"setEventRule": @"switch event rule mode",
     };
 }
 
 + (NSDictionary *)infoResponseBodyWithPeripheralName:(NSString *)peripheralName
                                          serviceUUID:(NSString *)serviceUUID
                                   characteristicUUID:(NSString *)characteristicUUID
-                                           sessionID:(NSString *)sessionID {
+                                           sessionID:(NSString *)sessionID
+                                      eventRuleMode:(NSString *)eventRuleMode {
     return @{
         @"name": peripheralName ?: @"",
         @"serviceUUID": serviceUUID ?: @"",
@@ -264,6 +284,7 @@
         @"protocolVersion": @(BLEProtocolVersion),
         @"pairing": @"pair-code",
         @"session": sessionID ?: @"",
+        @"eventRuleMode": [self normalizedEventRuleMode:eventRuleMode],
         @"requiresToken": @YES,
         @"capabilitySchema": @"ble-demo.capabilities.v1",
         @"security": @{
@@ -280,6 +301,7 @@
         @"commands": [self commandDescriptors],
         @"events": [self eventDescriptors],
         @"eventRules": [self eventRuleDescriptors],
+        @"eventRuleModes": [self eventRuleModes],
         @"transport": @{
             @"scanFilter": @"service FFF0, optional local name MacBLE-Demo",
             @"requestWrite": @"writeWithResponse preferred; writeWithoutResponse accepted",
@@ -333,6 +355,12 @@
             @"effect": @"reset session counters",
             @"emits": @"command.resetCounters",
         },
+        @{
+            @"name": @"setEventRule",
+            @"effect": @"switch event association mode",
+            @"modes": [self eventRuleModes],
+            @"emits": @"event.ruleChanged",
+        },
     ];
 }
 
@@ -343,7 +371,9 @@
         @{ @"type": @"write", @"trigger": @"protocol or legacy write" },
         @{ @"type": @"command.identify", @"trigger": @"command identify" },
         @{ @"type": @"command.sample", @"trigger": @"command sample" },
+        @{ @"type": @"command.sample.detail", @"trigger": @"command sample while rule mode is burst" },
         @{ @"type": @"command.resetCounters", @"trigger": @"command resetCounters" },
+        @{ @"type": @"event.ruleChanged", @"trigger": @"command setEventRule" },
     ];
 }
 
@@ -369,7 +399,40 @@
             @"then": @"command-specific event",
             @"delivery": @"notify",
         },
+        @{
+            @"when": @"eventRuleMode is quiet",
+            @"then": @"suppress write events except paired and rule changes",
+            @"delivery": @"notify",
+        },
+        @{
+            @"when": @"eventRuleMode is burst and command sample is processed",
+            @"then": @"send command.sample and command.sample.detail",
+            @"delivery": @"notify",
+        },
     ];
+}
+
++ (NSArray<NSString *> *)eventRuleModes {
+    return @[ @"normal", @"quiet", @"burst" ];
+}
+
++ (NSString *)normalizedEventRuleMode:(id)mode {
+    if ([mode isKindOfClass:[NSString class]] && [self isSupportedEventRuleMode:mode]) {
+        return mode;
+    }
+    return @"normal";
+}
+
++ (BOOL)isSupportedEventRuleMode:(id)mode {
+    return [mode isKindOfClass:[NSString class]] && [[self eventRuleModes] containsObject:mode];
+}
+
++ (BOOL)commandNameWasAccepted:(NSString *)commandName response:(NSDictionary *)response {
+    if (commandName.length == 0 || [self acceptedCommandNames][commandName] == nil) {
+        return NO;
+    }
+    return [response[BLEProtocolKeyOperation] isEqualToString:BLEProtocolOpCommandResult] &&
+           [response[BLEProtocolKeyOK] boolValue];
 }
 
 + (BOOL)operationRequiresToken:(NSString *)operation {

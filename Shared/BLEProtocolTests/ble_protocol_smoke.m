@@ -48,7 +48,23 @@ static BLEProtocolHandlerResult *HandleRequest(NSData *requestData, NSString *cu
                                            readCount:reads
                                           writeCount:writes
                                          notifyCount:notifies
-                                          eventCount:events];
+                                          eventCount:events
+                                      eventRuleMode:nil];
+}
+
+static BLEProtocolHandlerResult *HandleRequestWithRule(NSData *requestData, NSString *currentToken, NSUInteger reads, NSUInteger writes, NSUInteger notifies, NSUInteger events, NSString *eventRuleMode) {
+    return [BLEProtocolHandler responseForRequestData:requestData
+                                      peripheralName:kPeripheralName
+                                         serviceUUID:kServiceUUID
+                                  characteristicUUID:kCharacteristicUUID
+                                           sessionID:kSessionID
+                                            pairCode:BLEProtocolDefaultPairCode
+                                        currentToken:currentToken
+                                           readCount:reads
+                                          writeCount:writes
+                                         notifyCount:notifies
+                                          eventCount:events
+                                      eventRuleMode:eventRuleMode];
 }
 
 static void TestPairSuccess(void) {
@@ -99,9 +115,9 @@ static void TestInfoCapabilityDiscovery(void) {
     AssertTrue([operations[@"open"] containsObject:BLEProtocolOpGetInfo], @"info marks getInfo as open");
     AssertTrue([operations[@"protected"] containsObject:BLEProtocolOpCommand], @"info marks command as protected");
     AssertTrue([security[@"tokenAcceptedIn"] containsObject:@"body.token"], @"info documents body token fallback");
-    AssertTrue(commands.count == 3, @"info lists demo commands");
-    AssertTrue(events.count >= 6, @"info lists event types");
-    AssertTrue([summary containsString:@"commands=identify,sample,resetCounters"], @"capability summary lists command names");
+    AssertTrue(commands.count == 4, @"info lists demo commands");
+    AssertTrue(events.count >= 8, @"info lists event types");
+    AssertTrue([summary containsString:@"commands=identify,sample,resetCounters,setEventRule"], @"capability summary lists command names");
 }
 
 static void TestCommandMetadata(void) {
@@ -114,6 +130,36 @@ static void TestCommandMetadata(void) {
     AssertTrue(result.shouldResetCounters, @"resetCounters marks counter reset");
     AssertTrue([result.commandName isEqualToString:@"resetCounters"], @"command name captured");
     AssertTrue([response[BLEProtocolKeyBody][@"effect"] isEqualToString:@"reset session counters"], @"command effect documented in body");
+}
+
+static void TestSetEventRuleCommand(void) {
+    NSString *token = @"tok-test";
+    NSData *request = DataForRequest(BLEProtocolOpCommand, @"rule-1", token, @{
+        @"name": @"setEventRule",
+        @"mode": @"burst",
+    });
+    BLEProtocolHandlerResult *result = HandleRequestWithRule(request, token, 0, 0, 0, 0, @"quiet");
+    NSDictionary *response = EnvelopeFromData(result.responseData);
+
+    AssertTrue(result.commandAccepted, @"setEventRule command accepted");
+    AssertTrue(result.shouldSetEventRuleMode, @"setEventRule marks rule mode update");
+    AssertTrue([result.requestedEventRuleMode isEqualToString:@"burst"], @"setEventRule captures requested mode");
+    AssertTrue([response[BLEProtocolKeyBody][@"eventRuleMode"] isEqualToString:@"burst"], @"setEventRule response returns next mode");
+}
+
+static void TestSetEventRuleRejectsInvalidMode(void) {
+    NSString *token = @"tok-test";
+    NSData *request = DataForRequest(BLEProtocolOpCommand, @"rule-2", token, @{
+        @"name": @"setEventRule",
+        @"mode": @"loud",
+    });
+    BLEProtocolHandlerResult *result = HandleRequest(request, token, 0, 0, 0, 0);
+    NSDictionary *response = EnvelopeFromData(result.responseData);
+
+    AssertTrue(!result.commandAccepted, @"invalid setEventRule not accepted");
+    AssertTrue(!result.shouldSetEventRuleMode, @"invalid setEventRule does not mark update");
+    AssertTrue([response[BLEProtocolKeyOperation] isEqualToString:BLEProtocolOpError], @"invalid setEventRule returns error");
+    AssertTrue([response[BLEProtocolKeyError][@"code"] isEqualToString:BLEProtocolErrorInvalidBody], @"invalid setEventRule is invalid_body");
 }
 
 static void TestCommandMissingName(void) {
@@ -136,6 +182,8 @@ int main(int argc, const char * argv[]) {
         TestEchoWithToken();
         TestInfoCapabilityDiscovery();
         TestCommandMetadata();
+        TestSetEventRuleCommand();
+        TestSetEventRuleRejectsInvalidMode();
         TestCommandMissingName();
         if (gFailureCount > 0) {
             NSLog(@"BLEProtocol smoke tests failed: %lu", (unsigned long)gFailureCount);

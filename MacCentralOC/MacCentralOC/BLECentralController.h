@@ -28,6 +28,7 @@ typedef void (^BLECentralStateHandler)(void);
 - (void)sendProtocolEcho:(NSString *)text;
 - (void)sendTelemetryRequest;
 - (void)sendCommandNamed:(NSString *)name;
+- (void)sendEventRuleMode:(NSString *)mode;
 - (void)sendRawText:(NSString *)text;
 
 @end

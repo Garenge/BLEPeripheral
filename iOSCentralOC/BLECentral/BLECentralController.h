@@ -28,6 +28,7 @@ typedef void (^BLECentralDiscoveryHandler)(void);
 - (void)sendProtocolEcho:(NSString *)text;
 - (void)sendProtocolTelemetry;
 - (void)sendProtocolCommand:(NSString *)name;
+- (void)sendProtocolEventRuleMode:(NSString *)mode;
 - (void)sendLegacyText:(NSString *)text;
 
 @end

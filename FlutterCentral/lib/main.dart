@@ -247,6 +247,27 @@ class _BleCentralPageState extends State<BleCentralPage> {
                         OutlinedButton.icon(
                           onPressed: _controller.demoCharacteristic == null
                               ? null
+                              : () => _controller.sendEventRuleMode('normal'),
+                          icon: const Icon(Icons.rule),
+                          label: const Text('Rule Normal'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: _controller.demoCharacteristic == null
+                              ? null
+                              : () => _controller.sendEventRuleMode('quiet'),
+                          icon: const Icon(Icons.volume_down),
+                          label: const Text('Rule Quiet'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: _controller.demoCharacteristic == null
+                              ? null
+                              : () => _controller.sendEventRuleMode('burst'),
+                          icon: const Icon(Icons.bolt),
+                          label: const Text('Rule Burst'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: _controller.demoCharacteristic == null
+                              ? null
                               : () => _controller.sendRawText(
                                   _payloadController.text,
                                 ),

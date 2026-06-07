@@ -75,7 +75,7 @@
     self.pairCodeField.translatesAutoresizingMaskIntoConstraints = NO;
 
     self.echoTextField = [[UITextField alloc] init];
-    self.echoTextField.placeholder = @"Echo text or command name";
+    self.echoTextField.placeholder = @"Echo, command, or rule:quiet";
     self.echoTextField.borderStyle = UITextBorderStyleRoundedRect;
     self.echoTextField.text = @"Hello from iPhone";
     self.echoTextField.translatesAutoresizingMaskIntoConstraints = NO;
@@ -195,6 +195,11 @@
 
 - (void)commandTapped {
     NSString *name = self.echoTextField.text.length > 0 ? self.echoTextField.text : @"identify";
+    NSString *ruleMode = [self eventRuleModeFromCommandText:name];
+    if (ruleMode.length > 0) {
+        [self.centralController sendProtocolEventRuleMode:ruleMode];
+        return;
+    }
     [self.centralController sendProtocolCommand:name];
 }
 
@@ -208,6 +213,14 @@
 
 - (void)notifyOffTapped {
     [self.centralController subscribeNotifications:NO];
+}
+
+- (nullable NSString *)eventRuleModeFromCommandText:(NSString *)text {
+    NSString *prefix = @"rule:";
+    if (![text hasPrefix:prefix]) {
+        return nil;
+    }
+    return [text substringFromIndex:prefix.length];
 }
 
 #pragma mark - UITableView

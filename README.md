@@ -71,7 +71,7 @@ Objective-C macOS:
 open MacCentralOC/MacCentralOC.xcodeproj
 ```
 
-Run **MacCentralOC** on **My Mac** → allow Bluetooth → **Scan** → select `MacBLE-Demo` → **Connect**. The app auto-enables Notify and auto-pairs with code `135790`; then use **Ping**, **Info**, **Echo**, **Telemetry**, **Command**, **Raw**, **Read**, and **Notify On/Off**.
+Run **MacCentralOC** on **My Mac** → allow Bluetooth → **Scan** → select `MacBLE-Demo` → **Connect**. The app auto-enables Notify and auto-pairs with code `135790`; then use **Ping**, **Info**, **Echo**, **Telemetry**, **Command**, **Raw**, **Read**, and **Notify On/Off**. Type `rule:quiet`, `rule:burst`, or `rule:normal` in the payload field and press **Command** to switch event rules.
 
 Flutter macOS:
 
@@ -80,7 +80,7 @@ cd FlutterCentral
 flutter run -d macos
 ```
 
-Allow Bluetooth → **Scan** → connect `MacBLE-Demo`. The app auto-enables Notify and auto-pairs; then use **Pair**, **Ping**, **Info**, **Echo**, **Telemetry**, **Command**, **Raw**, **Read**, and **Notify On/Off**.
+Allow Bluetooth → **Scan** → connect `MacBLE-Demo`. The app auto-enables Notify and auto-pairs; then use **Pair**, **Ping**, **Info**, **Echo**, **Telemetry**, **Command**, **Rule Normal/Quiet/Burst**, **Raw**, **Read**, and **Notify On/Off**.
 
 iPhone Objective-C:
 
@@ -88,7 +88,7 @@ iPhone Objective-C:
 open iOSCentralOC/BLECentral.xcodeproj
 ```
 
-Select your iPhone, set **Signing Team**, run **BLECentral** → **Scan** → connect `MacBLE-Demo`. The app auto-enables Notify and auto-pairs; then use **Pair**, **Ping**, **Info**, **Echo**, **Telemetry**, **Command**, **Raw**, **Read**, and **Notify On/Off**.
+Select your iPhone, set **Signing Team**, run **BLECentral** → **Scan** → connect `MacBLE-Demo`. The app auto-enables Notify and auto-pairs; then use **Pair**, **Ping**, **Info**, **Echo**, **Telemetry**, **Command**, **Raw**, **Read**, and **Notify On/Off**. Type `rule:quiet`, `rule:burst`, or `rule:normal` in the text field and tap **Command** to switch event rules.
 
 ### Terminal build
 
@@ -138,7 +138,7 @@ First-party protocol sequence:
 
 `scan` → `connect` → `discover FFF0/FFF1` → `notify on` → `pair(code=135790)` + `getInfo` → `token` + capabilities → protected `echo` / `telemetry` / `command` → `event` notifications
 
-Demo commands: `identify`, `sample`, `resetCounters`.
+Demo commands: `identify`, `sample`, `resetCounters`, `setEventRule`.
 
 ## Operation Matrix
 
@@ -152,6 +152,7 @@ Demo commands: `identify`, `sample`, `resetCounters`.
 | Command `identify` | Write + Notify | Yes | `commandResult`, then `event.type=command.identify` |
 | Command `sample` | Write + Notify | Yes | `commandResult`, then simulated sample telemetry event |
 | Command `resetCounters` | Write + Notify | Yes | `commandResult`, then counter reset event |
+| Command `setEventRule` | Write + Notify | Yes | Switches `normal` / `quiet` / `burst`; pushes `event.ruleChanged` |
 | Raw | Write + Notify/Read | No | Legacy `00 AA` + original bytes |
 
 ## Next Work

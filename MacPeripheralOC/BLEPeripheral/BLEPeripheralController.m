@@ -7,6 +7,9 @@ static NSString * const kDemoPeripheralName = @"MacBLE-Demo";
 static NSString * const kDemoServiceUUIDString = @"0000FFF0-0000-1000-8000-00805F9B34FB";
 static NSString * const kDemoCharacteristicUUIDString = @"0000FFF1-0000-1000-8000-00805F9B34FB";
 static NSString * const kUnknownCentralUUIDString = @"00000000-0000-0000-0000-000000000001";
+static NSString * const kEventRuleModeNormal = @"normal";
+static NSString * const kEventRuleModeQuiet = @"quiet";
+static NSString * const kEventRuleModeBurst = @"burst";
 
 static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
 
@@ -14,6 +17,7 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
 @property (nonatomic, copy) NSUUID *identifier;
 @property (nonatomic, copy) NSString *sessionID;
 @property (nonatomic, copy, nullable) NSString *sessionToken;
+@property (nonatomic, copy) NSString *eventRuleMode;
 @property (nonatomic) BOOL linkSeen;
 @property (nonatomic) BOOL notifyEnabled;
 @property (nonatomic) NSUInteger maxUpdateLength;
@@ -152,10 +156,11 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
                                                                         sessionID:tracked.sessionID
                                                                          pairCode:BLEProtocolDefaultPairCode
                                                                      currentToken:tracked.sessionToken
-                                                                        readCount:tracked.readCount
-                                                                       writeCount:tracked.writeCount
-                                                                      notifyCount:tracked.notifyCount
-                                                                       eventCount:tracked.eventCount];
+                                                                       readCount:tracked.readCount
+                                                                      writeCount:tracked.writeCount
+                                                                     notifyCount:tracked.notifyCount
+                                                                       eventCount:tracked.eventCount
+                                                                   eventRuleMode:tracked.eventRuleMode];
     if (result.sessionToken.length > 0) {
         tracked.sessionToken = result.sessionToken;
     }
@@ -176,10 +181,12 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
     }
 
     tracked.eventCount += 1;
+    NSMutableDictionary *eventBody = body ? [body mutableCopy] : [NSMutableDictionary dictionary];
+    eventBody[@"eventRuleMode"] = tracked.eventRuleMode ?: kEventRuleModeNormal;
     NSData *eventData = [BLEProtocolHandler eventNotificationDataWithType:type
                                                                  sequence:tracked.eventCount
                                                                   session:tracked.sessionID
-                                                                     body:body ?: @{}];
+                                                                     body:eventBody.copy];
     BOOL didSend = [peripheral updateValue:eventData
                          forCharacteristic:self.demoCharacteristic
                       onSubscribedCentrals:central ? @[ central ] : nil];
@@ -201,6 +208,19 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
     }
 
     NSDictionary *eventBody = [self commandEventBodyForName:protocolResult.commandName trackedCentral:tracked];
+    if (protocolResult.shouldSetEventRuleMode) {
+        NSString *oldMode = tracked.eventRuleMode ?: kEventRuleModeNormal;
+        tracked.eventRuleMode = protocolResult.requestedEventRuleMode ?: kEventRuleModeNormal;
+        [self pushSessionEventForCentral:central
+                                    type:@"event.ruleChanged"
+                                    body:@{
+            @"name": protocolResult.commandName ?: @"setEventRule",
+            @"previous": oldMode,
+            @"mode": tracked.eventRuleMode,
+        }
+                              peripheral:peripheral];
+        return;
+    }
     if (protocolResult.shouldResetCounters) {
         tracked.readCount = 0;
         tracked.writeCount = 0;
@@ -211,6 +231,10 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
                                 type:[NSString stringWithFormat:@"command.%@", protocolResult.commandName ?: @"unknown"]
                                 body:eventBody
                           peripheral:peripheral];
+    [self pushBurstDetailIfNeededForProtocolResult:protocolResult
+                                           central:central
+                                           tracked:tracked
+                                        peripheral:peripheral];
 }
 
 - (NSDictionary *)commandEventBodyForName:(NSString *)name trackedCentral:(BLETrackedCentral *)tracked {
@@ -250,6 +274,29 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
         };
     }
     return @{ @"name": name ?: @"unknown" };
+}
+
+- (void)pushBurstDetailIfNeededForProtocolResult:(BLEProtocolHandlerResult *)protocolResult
+                                         central:(nullable CBCentral *)central
+                                         tracked:(BLETrackedCentral *)tracked
+                                      peripheral:(CBPeripheralManager *)peripheral {
+    if (![tracked.eventRuleMode isEqualToString:kEventRuleModeBurst] ||
+        ![protocolResult.commandName isEqualToString:@"sample"]) {
+        return;
+    }
+
+    [self pushSessionEventForCentral:central
+                                type:@"command.sample.detail"
+                                body:@{
+        @"name": @"sample",
+        @"rule": kEventRuleModeBurst,
+        @"samples": @[
+            @{ @"metric": @"battery", @"unit": @"percent" },
+            @{ @"metric": @"rssiHint", @"unit": @"dBm" },
+            @{ @"metric": @"temperatureC", @"unit": @"celsius" },
+        ],
+    }
+                          peripheral:peripheral];
 }
 
 - (BOOL)pushAutoNotifyReply:(CBPeripheralManager *)peripheral {
@@ -313,6 +360,7 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
         tracked = [[BLETrackedCentral alloc] init];
         tracked.identifier = uuid;
         tracked.sessionID = [self shortSessionIDForUUID:uuid];
+        tracked.eventRuleMode = kEventRuleModeNormal;
         self.trackedCentrals[uuid] = tracked;
     }
     return tracked;
@@ -497,6 +545,7 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
     [self log:@"Characteristic properties: read, write, writeWithoutResponse, notify"];
     [self log:[NSString stringWithFormat:@"Security rule: pair code %@ -> session token; protected ops include echo/telemetry/command", BLEProtocolDefaultPairCode]];
     [self log:@"Message rule: JSON protocol replies over notify/read; non-protocol payload keeps 0x00 0xAA echo"];
+    [self log:@"Event rule modes: normal, quiet, burst; command setEventRule switches a session"];
     [self log:@"Auto delivery: Notify pushes reply + session events after writes (phone must enable Notify on FFF1)"];
     [self log:@"Read FFF1 only if Notify is off — third-party apps can still write raw bytes for 00AA echo"];
     [self log:@"--- end profile ---"];
@@ -634,14 +683,16 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
         if (protocolResult) {
             [self pushReply:outgoing toCentral:central peripheral:peripheral];
             NSString *eventType = protocolResult.pairingSucceeded ? @"paired" : @"write";
-            [self pushSessionEventForCentral:central
-                                        type:eventType
-                                        body:@{
-                @"writes": @(tracked.writeCount),
-                @"reads": @(tracked.readCount),
-                @"notifies": @(tracked.notifyCount),
+            if ([self shouldPushWriteEventType:eventType trackedCentral:tracked protocolResult:protocolResult]) {
+                [self pushSessionEventForCentral:central
+                                            type:eventType
+                                            body:@{
+                    @"writes": @(tracked.writeCount),
+                    @"reads": @(tracked.readCount),
+                    @"notifies": @(tracked.notifyCount),
+                }
+                                      peripheral:peripheral];
             }
-                                  peripheral:peripheral];
             [self applyProtocolResult:protocolResult forCentral:central peripheral:peripheral];
         } else {
             [self pushReply:outgoing toCentral:central peripheral:peripheral];
@@ -683,9 +734,33 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
     [self pushAutoNotifyReply:peripheral];
 }
 
+- (BOOL)shouldPushWriteEventType:(NSString *)eventType
+                  trackedCentral:(BLETrackedCentral *)tracked
+                  protocolResult:(BLEProtocolHandlerResult *)protocolResult {
+    if ([eventType isEqualToString:@"paired"]) {
+        return YES;
+    }
+    if (protocolResult.shouldSetEventRuleMode) {
+        return NO;
+    }
+    if ([tracked.eventRuleMode isEqualToString:kEventRuleModeQuiet]) {
+        return NO;
+    }
+    return YES;
+}
+
 @end
 
 #pragma mark - BLETrackedCentral
 
 @implementation BLETrackedCentral
+
+- (instancetype)init {
+    self = [super init];
+    if (self) {
+        _eventRuleMode = kEventRuleModeNormal;
+    }
+    return self;
+}
+
 @end
