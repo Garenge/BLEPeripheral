@@ -6,6 +6,7 @@
 @property (nonatomic, strong) UITableView *tableView;
 @property (nonatomic, strong) UITextView *logTextView;
 @property (nonatomic, strong) UITextField *echoTextField;
+@property (nonatomic, strong) UITextField *pairCodeField;
 @property (nonatomic, strong) UILabel *statusLabel;
 
 @end
@@ -48,9 +49,16 @@
     ]];
 
     UIStackView *protocolButtons = [self buttonRow:@[
+        [self makeButton:@"Pair" action:@selector(pairTapped)],
         [self makeButton:@"Ping" action:@selector(pingTapped)],
         [self makeButton:@"Info" action:@selector(infoTapped)],
         [self makeButton:@"Echo" action:@selector(echoTapped)],
+    ]];
+
+    UIStackView *advancedButtons = [self buttonRow:@[
+        [self makeButton:@"Telemetry" action:@selector(telemetryTapped)],
+        [self makeButton:@"Command" action:@selector(commandTapped)],
+        [self makeButton:@"Raw" action:@selector(legacyTapped)],
     ]];
 
     UIStackView *dataButtons = [self buttonRow:@[
@@ -59,14 +67,18 @@
         [self makeButton:@"Notify Off" action:@selector(notifyOffTapped)],
     ]];
 
+    self.pairCodeField = [[UITextField alloc] init];
+    self.pairCodeField.placeholder = @"Pair code";
+    self.pairCodeField.borderStyle = UITextBorderStyleRoundedRect;
+    self.pairCodeField.text = @"135790";
+    self.pairCodeField.keyboardType = UIKeyboardTypeNumberPad;
+    self.pairCodeField.translatesAutoresizingMaskIntoConstraints = NO;
+
     self.echoTextField = [[UITextField alloc] init];
-    self.echoTextField.placeholder = @"Echo text";
+    self.echoTextField.placeholder = @"Echo text or command name";
     self.echoTextField.borderStyle = UITextBorderStyleRoundedRect;
     self.echoTextField.text = @"Hello from iPhone";
     self.echoTextField.translatesAutoresizingMaskIntoConstraints = NO;
-
-    UIButton *legacyButton = [self makeButton:@"Legacy Write" action:@selector(legacyTapped)];
-    legacyButton.translatesAutoresizingMaskIntoConstraints = NO;
 
     self.tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
     self.tableView.translatesAutoresizingMaskIntoConstraints = NO;
@@ -83,10 +95,11 @@
         self.statusLabel,
         topButtons,
         self.tableView,
+        self.pairCodeField,
         protocolButtons,
         self.echoTextField,
+        advancedButtons,
         dataButtons,
-        legacyButton,
         self.logTextView,
     ]];
     stack.axis = UILayoutConstraintAxisVertical;
@@ -160,6 +173,10 @@
     [self.centralController sendProtocolPing];
 }
 
+- (void)pairTapped {
+    [self.centralController sendProtocolPairCode:self.pairCodeField.text];
+}
+
 - (void)infoTapped {
     [self.centralController sendProtocolGetInfo];
 }
@@ -170,6 +187,15 @@
 
 - (void)legacyTapped {
     [self.centralController sendLegacyText:self.echoTextField.text];
+}
+
+- (void)telemetryTapped {
+    [self.centralController sendProtocolTelemetry];
+}
+
+- (void)commandTapped {
+    NSString *name = self.echoTextField.text.length > 0 ? self.echoTextField.text : @"identify";
+    [self.centralController sendProtocolCommand:name];
 }
 
 - (void)readTapped {

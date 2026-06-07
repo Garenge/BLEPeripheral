@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 const String demoPeripheralName = 'MacBLE-Demo';
+const int bleProtocolVersion = 1;
+const String bleDefaultPairCode = '135790';
 final Guid demoServiceUuid = Guid('0000FFF0-0000-1000-8000-00805F9B34FB');
 final Guid demoCharacteristicUuid = Guid(
   '0000FFF1-0000-1000-8000-00805F9B34FB',
@@ -23,7 +25,11 @@ class DiscoveredBleDevice {
 }
 
 class BleCentralController extends ChangeNotifier {
-  BleCentralController() {
+  BleCentralController({bool enableBluetooth = true}) {
+    if (!enableBluetooth) {
+      _log('SYS init: Bluetooth disabled for widget test');
+      return;
+    }
     _subscriptions.add(
       FlutterBluePlus.adapterState.listen(_handleAdapterState),
     );
@@ -42,6 +48,8 @@ class BleCentralController extends ChangeNotifier {
   BluetoothCharacteristic? demoCharacteristic;
   bool isScanning = false;
   bool notifyEnabled = false;
+  int _protocolSequence = 0;
+  String? sessionToken;
 
   List<DiscoveredBleDevice> get devices => _devicesById.values.toList();
 
@@ -53,7 +61,8 @@ class BleCentralController extends ChangeNotifier {
       return 'Disconnected';
     }
     final name = _deviceName(device);
-    return '$name ${notifyEnabled ? "Notify ON" : "Notify OFF"}';
+    final auth = sessionToken == null ? 'unpaired' : 'paired';
+    return '$name ${notifyEnabled ? "Notify ON" : "Notify OFF"} $auth';
   }
 
   Future<void> startScan() async {
@@ -115,6 +124,34 @@ class BleCentralController extends ChangeNotifier {
   }
 
   Future<void> writeText(String text) async {
+    await sendEcho(text);
+  }
+
+  Future<void> sendPairCode(String code) async {
+    await _sendProtocol('pair', {'code': code}, includeToken: false);
+  }
+
+  Future<void> sendPing() async {
+    await _sendProtocol('ping', const {}, includeToken: false);
+  }
+
+  Future<void> sendInfo() async {
+    await _sendProtocol('getInfo', const {}, includeToken: false);
+  }
+
+  Future<void> sendEcho(String text) async {
+    await _sendProtocol('echo', {'text': text}, includeToken: true);
+  }
+
+  Future<void> sendTelemetry() async {
+    await _sendProtocol('telemetry', const {}, includeToken: true);
+  }
+
+  Future<void> sendCommand(String name) async {
+    await _sendProtocol('command', {'name': name}, includeToken: true);
+  }
+
+  Future<void> sendRawText(String text) async {
     final characteristic = demoCharacteristic;
     if (characteristic == null) {
       _log('TX write skipped: characteristic missing');
@@ -122,7 +159,34 @@ class BleCentralController extends ChangeNotifier {
     }
     final payload = utf8.encode(text);
     await characteristic.write(payload, withoutResponse: false);
-    _log('TX write: ${payload.length} B text="$text"');
+    _log('TX raw write: ${payload.length} B text="$text"');
+  }
+
+  Future<void> _sendProtocol(
+    String operation,
+    Map<String, Object?> body, {
+    required bool includeToken,
+  }) async {
+    final characteristic = demoCharacteristic;
+    if (characteristic == null) {
+      _log('TX protocol $operation skipped: characteristic missing');
+      return;
+    }
+    _protocolSequence += 1;
+    final request = <String, Object?>{
+      'v': bleProtocolVersion,
+      'op': operation,
+      'id': 'flutter-$_protocolSequence',
+      'body': body,
+    };
+    if (includeToken && sessionToken != null) {
+      request['token'] = sessionToken;
+    }
+    final payload = utf8.encode(jsonEncode(request));
+    await characteristic.write(payload, withoutResponse: false);
+    _log(
+      'TX protocol $operation: ${payload.length} B token=${includeToken && sessionToken != null ? "yes" : "no"}',
+    );
   }
 
   Future<void> setNotify(bool enabled) async {
@@ -205,6 +269,7 @@ class BleCentralController extends ChangeNotifier {
     );
     await setNotify(true);
     await readValue();
+    await sendPairCode(bleDefaultPairCode);
     notifyListeners();
   }
 
@@ -212,6 +277,7 @@ class BleCentralController extends ChangeNotifier {
     connectedDevice = null;
     demoCharacteristic = null;
     notifyEnabled = false;
+    sessionToken = null;
     notifyListeners();
   }
 
@@ -223,7 +289,51 @@ class BleCentralController extends ChangeNotifier {
       );
       return;
     }
+    final decoded = _tryDecodeJson(value);
+    if (decoded != null && decoded['v'] is num && decoded['op'] is String) {
+      _captureSessionToken(decoded);
+      final operation = decoded['op'];
+      final ok = decoded['ok'];
+      final id = decoded['id'] ?? '-';
+      final token = decoded['token'] is String ? 'yes' : 'no';
+      if (decoded['err'] is Map) {
+        final error = decoded['err'] as Map<dynamic, dynamic>;
+        _log(
+          '$label protocol: op=$operation id=$id token=$token error=${error['code']} (${error['message']})',
+        );
+      } else {
+        _log('$label protocol: op=$operation id=$id token=$token ok=$ok');
+      }
+      if (decoded['body'] is Map) {
+        _log(
+          '${operation == "event" ? "EVT" : "RX"} body=${jsonEncode(decoded['body'])}',
+        );
+      }
+      return;
+    }
     _log('$label raw: ${value.length} B text="${_decode(value)}"');
+  }
+
+  Map<String, dynamic>? _tryDecodeJson(List<int> value) {
+    try {
+      final decoded = jsonDecode(utf8.decode(value));
+      return decoded is Map<String, dynamic> ? decoded : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _captureSessionToken(Map<String, dynamic> message) {
+    var token = message['token'];
+    final body = message['body'];
+    if (token is! String && body is Map<String, dynamic>) {
+      token = body['token'];
+    }
+    if (token is String && token.isNotEmpty && token != sessionToken) {
+      sessionToken = token;
+      _log('AUTH token captured: $token');
+      notifyListeners();
+    }
   }
 
   bool _isEchoReply(List<int> value) {

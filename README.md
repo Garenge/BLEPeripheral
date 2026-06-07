@@ -39,15 +39,18 @@ BLEPeripheral/                 # repo root
 
 Implemented:
 
-- macOS Objective-C peripheral app + iOS Objective-C central app
-- macOS Objective-C central app for scanning, connecting, reading, writing, and notify
-- Flutter macOS central app using `flutter_blue_plus`
+- macOS Objective-C peripheral app with session tracking per Central
+- macOS Objective-C central app for scanning, pairing, reading, writing, notify, telemetry, and commands
+- iOS Objective-C central app with the same protocol controls
+- Flutter macOS central app using `flutter_blue_plus` with the same protocol controls
 - **FFF1 简单回显**：`00 AA` + 对方原始内容（见 [ble_simple_echo.md](ble_simple_echo.md)）
-- Shared JSON protocol v1 in `Shared/BLEProtocol/`（iOS 示例 App 仍可用，Mac 已改为回显模式）
+- Shared JSON protocol v1 in `Shared/BLEProtocol/`
 - GATT service `FFF0`, characteristic `FFF1` (`read` / `write` / `notify`)
-- Protocol: `ping`, `echo`, `getInfo`, server `tick`; legacy raw UTF-8 writes
+- Protocol: `pair`, `ping`, `getInfo`, `echo`, `telemetry`, `command`, server `event`; legacy raw writes
 
 See [ble_protocol.md](ble_protocol.md) for message format.
+
+Default demo pair code: `135790`.
 
 ## Quick Start
 
@@ -67,7 +70,7 @@ Objective-C macOS:
 open MacCentralOC/MacCentralOC.xcodeproj
 ```
 
-Run **MacCentralOC** on **My Mac** → allow Bluetooth → **Scan** → select `MacBLE-Demo` → **Connect** → **Write**.
+Run **MacCentralOC** on **My Mac** → allow Bluetooth → **Scan** → select `MacBLE-Demo` → **Connect**. The app auto-enables Notify and auto-pairs with code `135790`; then use **Ping**, **Info**, **Echo**, **Telemetry**, **Command**, **Raw**, **Read**, and **Notify On/Off**.
 
 Flutter macOS:
 
@@ -76,7 +79,7 @@ cd FlutterCentral
 flutter run -d macos
 ```
 
-Allow Bluetooth → **Scan** → connect `MacBLE-Demo` → write a payload.
+Allow Bluetooth → **Scan** → connect `MacBLE-Demo`. The app auto-enables Notify and auto-pairs; then use **Pair**, **Ping**, **Info**, **Echo**, **Telemetry**, **Command**, **Raw**, **Read**, and **Notify On/Off**.
 
 iPhone Objective-C:
 
@@ -84,7 +87,7 @@ iPhone Objective-C:
 open iOSCentralOC/BLECentral.xcodeproj
 ```
 
-Select your iPhone, set **Signing Team**, run **BLECentral** → **Scan** → connect `MacBLE-Demo` → **Notify On** → **Ping**.
+Select your iPhone, set **Signing Team**, run **BLECentral** → **Scan** → connect `MacBLE-Demo`. The app auto-enables Notify and auto-pairs; then use **Pair**, **Ping**, **Info**, **Echo**, **Telemetry**, **Command**, **Raw**, **Read**, and **Notify On/Off**.
 
 ### Terminal build
 
@@ -96,7 +99,7 @@ xcodebuild -project MacPeripheralOC/BLEPeripheral.xcodeproj -scheme BLEPeriphera
 xcodebuild -project MacCentralOC/MacCentralOC.xcodeproj -scheme MacCentralOC -configuration Debug build
 
 # Flutter macOS Central
-cd FlutterCentral && flutter analyze && flutter build macos --debug
+cd FlutterCentral && flutter analyze && flutter test && flutter build macos --debug
 
 # iOS Objective-C Central
 xcodebuild -project iOSCentralOC/BLECentral.xcodeproj -scheme BLECentral -configuration Debug -sdk iphoneos build
@@ -126,9 +129,12 @@ Core Central sequence:
 
 `scanForPeripherals` → `connectPeripheral` → `discoverServices` → `discoverCharacteristics` → `setNotifyValue` / `readValue` / `writeValue`
 
+First-party protocol sequence:
+
+`scan` → `connect` → `discover FFF0/FFF1` → `notify on` → `pair(code=135790)` → `token` → protected `echo` / `telemetry` / `command` → `event` notifications
+
 ## Next Work
 
-- Mac UI controls (advertise start/stop, etc.)
 - Configurable profile + persistence
 - Notify queue / MTU splitting
 - Unit tests for `Shared/BLEProtocol`

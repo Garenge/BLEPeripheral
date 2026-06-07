@@ -22,6 +22,13 @@ typedef void (^BLECentralStateHandler)(void);
 - (void)readValue;
 - (void)setNotifyEnabled:(BOOL)enabled;
 - (void)writeText:(NSString *)text;
+- (void)sendPairCode:(NSString *)code;
+- (void)sendProtocolPing;
+- (void)sendProtocolGetInfo;
+- (void)sendProtocolEcho:(NSString *)text;
+- (void)sendTelemetryRequest;
+- (void)sendCommandNamed:(NSString *)name;
+- (void)sendRawText:(NSString *)text;
 
 @end
 

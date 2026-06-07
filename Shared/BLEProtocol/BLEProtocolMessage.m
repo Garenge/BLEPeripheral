@@ -43,24 +43,46 @@
 + (NSDictionary *)requestWithOperation:(NSString *)operation
                             messageID:(NSString *)messageID
                                  body:(NSDictionary *)body {
-    return @{
+    return [self requestWithOperation:operation messageID:messageID token:nil body:body];
+}
+
++ (NSDictionary *)requestWithOperation:(NSString *)operation
+                            messageID:(NSString *)messageID
+                                 token:(NSString *)token
+                                  body:(NSDictionary *)body {
+    NSMutableDictionary *request = [@{
         BLEProtocolKeyVersion: @(BLEProtocolVersion),
         BLEProtocolKeyOperation: operation,
         BLEProtocolKeyMessageID: messageID,
         BLEProtocolKeyBody: body ?: @{},
-    };
+    } mutableCopy];
+    if (token.length > 0) {
+        request[BLEProtocolKeyToken] = token;
+    }
+    return request.copy;
 }
 
 + (NSDictionary *)successResponseForOperation:(NSString *)operation
                                     messageID:(NSString *)messageID
                                          body:(NSDictionary *)body {
-    return @{
+    return [self successResponseForOperation:operation messageID:messageID token:nil body:body];
+}
+
++ (NSDictionary *)successResponseForOperation:(NSString *)operation
+                                    messageID:(NSString *)messageID
+                                         token:(NSString *)token
+                                          body:(NSDictionary *)body {
+    NSMutableDictionary *response = [@{
         BLEProtocolKeyVersion: @(BLEProtocolVersion),
         BLEProtocolKeyOperation: operation,
         BLEProtocolKeyMessageID: messageID,
         BLEProtocolKeyOK: @YES,
         BLEProtocolKeyBody: body ?: @{},
-    };
+    } mutableCopy];
+    if (token.length > 0) {
+        response[BLEProtocolKeyToken] = token;
+    }
+    return response.copy;
 }
 
 + (NSDictionary *)errorResponseWithMessageID:(NSString *)messageID
@@ -83,23 +105,45 @@
     return response;
 }
 
++ (NSDictionary *)eventWithType:(NSString *)type
+                       sequence:(NSUInteger)sequence
+                        session:(NSString *)session
+                           body:(NSDictionary *)body {
+    NSMutableDictionary *eventBody = [@{
+        @"type": type ?: @"unknown",
+        @"n": @(sequence),
+        @"ts": @((NSInteger)[NSDate.date timeIntervalSince1970]),
+    } mutableCopy];
+    if (session.length > 0) {
+        eventBody[@"session"] = session;
+    }
+    if (body.count > 0) {
+        [eventBody addEntriesFromDictionary:body];
+    }
+    NSString *messageID = [NSString stringWithFormat:@"event-%lu", (unsigned long)sequence];
+    return [self successResponseForOperation:BLEProtocolOpEvent messageID:messageID body:eventBody];
+}
+
 + (NSString *)summaryForDictionary:(NSDictionary *)dictionary {
     NSString *operation = dictionary[BLEProtocolKeyOperation];
     id messageID = dictionary[BLEProtocolKeyMessageID];
     NSNumber *ok = dictionary[BLEProtocolKeyOK];
+    NSString *token = dictionary[BLEProtocolKeyToken];
 
     if ([dictionary[BLEProtocolKeyError] isKindOfClass:[NSDictionary class]]) {
         NSDictionary *err = dictionary[BLEProtocolKeyError];
-        return [NSString stringWithFormat:@"op=%@ id=%@ error=%@ (%@)",
+        return [NSString stringWithFormat:@"op=%@ id=%@ token=%@ error=%@ (%@)",
                 operation ?: @"?",
                 messageID ?: @"-",
+                token.length > 0 ? @"yes" : @"no",
                 err[@"code"] ?: @"?",
                 err[@"message"] ?: @"?"];
     }
 
-    return [NSString stringWithFormat:@"op=%@ id=%@ ok=%@",
+    return [NSString stringWithFormat:@"op=%@ id=%@ token=%@ ok=%@",
             operation ?: @"?",
             messageID ?: @"-",
+            token.length > 0 ? @"yes" : @"no",
             ok ?: @"-"];
 }
 

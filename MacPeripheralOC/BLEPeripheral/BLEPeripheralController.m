@@ -1,5 +1,7 @@
 #import "BLEPeripheralController.h"
 #import <CoreBluetooth/CoreBluetooth.h>
+#import "BLEProtocolConstants.h"
+#import "BLEProtocolHandler.h"
 
 static NSString * const kDemoPeripheralName = @"MacBLE-Demo";
 static NSString * const kDemoServiceUUIDString = @"0000FFF0-0000-1000-8000-00805F9B34FB";
@@ -10,9 +12,15 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
 
 @interface BLETrackedCentral : NSObject
 @property (nonatomic, copy) NSUUID *identifier;
+@property (nonatomic, copy) NSString *sessionID;
+@property (nonatomic, copy, nullable) NSString *sessionToken;
 @property (nonatomic) BOOL linkSeen;
 @property (nonatomic) BOOL notifyEnabled;
 @property (nonatomic) NSUInteger maxUpdateLength;
+@property (nonatomic) NSUInteger readCount;
+@property (nonatomic) NSUInteger writeCount;
+@property (nonatomic) NSUInteger notifyCount;
+@property (nonatomic) NSUInteger eventCount;
 @end
 
 @interface BLEPeripheralController () <CBPeripheralManagerDelegate>
@@ -126,6 +134,64 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
     return reply;
 }
 
+- (NSData *)responseDataForIncoming:(NSData *)incoming
+                             central:(nullable CBCentral *)central
+                       protocolResult:(BLEProtocolHandlerResult * _Nullable * _Nullable)protocolResult {
+    if (![BLEProtocolHandler looksLikeProtocolData:incoming]) {
+        if (protocolResult) {
+            *protocolResult = nil;
+        }
+        return [self echoReplyDataForIncoming:incoming];
+    }
+
+    BLETrackedCentral *tracked = [self trackedCentralForCentral:central createIfNeeded:YES];
+    BLEProtocolHandlerResult *result = [BLEProtocolHandler responseForRequestData:incoming
+                                                                   peripheralName:kDemoPeripheralName
+                                                                      serviceUUID:kDemoServiceUUIDString
+                                                               characteristicUUID:kDemoCharacteristicUUIDString
+                                                                        sessionID:tracked.sessionID
+                                                                         pairCode:BLEProtocolDefaultPairCode
+                                                                     currentToken:tracked.sessionToken
+                                                                        readCount:tracked.readCount
+                                                                       writeCount:tracked.writeCount
+                                                                      notifyCount:tracked.notifyCount
+                                                                       eventCount:tracked.eventCount];
+    if (result.sessionToken.length > 0) {
+        tracked.sessionToken = result.sessionToken;
+    }
+    if (protocolResult) {
+        *protocolResult = result;
+    }
+    return result.responseData ?: NSData.data;
+}
+
+- (void)pushSessionEventForCentral:(nullable CBCentral *)central
+                              type:(NSString *)type
+                              body:(NSDictionary *)body
+                        peripheral:(CBPeripheralManager *)peripheral {
+    BLETrackedCentral *tracked = [self trackedCentralForCentral:central createIfNeeded:YES];
+    if (!tracked.notifyEnabled) {
+        [self logEvent:@"TX" detail:[NSString stringWithFormat:@"event skipped: session=%@ notify OFF type=%@", tracked.sessionID, type]];
+        return;
+    }
+
+    tracked.eventCount += 1;
+    NSData *eventData = [BLEProtocolHandler eventNotificationDataWithType:type
+                                                                 sequence:tracked.eventCount
+                                                                  session:tracked.sessionID
+                                                                     body:body ?: @{}];
+    BOOL didSend = [peripheral updateValue:eventData
+                         forCharacteristic:self.demoCharacteristic
+                      onSubscribedCentrals:central ? @[ central ] : nil];
+    if (didSend) {
+        tracked.notifyCount += 1;
+        [self logTX:central channel:@"notify/event" data:eventData extra:[NSString stringWithFormat:@"type=%@", type]];
+    } else {
+        self.pendingNotifyPayload = eventData;
+        [self logEvent:@"TX" detail:[NSString stringWithFormat:@"event queued: session=%@ type=%@", tracked.sessionID, type]];
+    }
+}
+
 - (BOOL)pushAutoNotifyReply:(CBPeripheralManager *)peripheral {
     if (![self anyCentralNotifyEnabled]) {
         [self logEvent:@"TX" detail:@"auto-push skipped — phone has NOT enabled Notify on FFF1 (must open Notify/CCCD, not Read)"];
@@ -146,6 +212,30 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
     return didSend;
 }
 
+- (BOOL)pushReply:(NSData *)payload
+        toCentral:(nullable CBCentral *)central
+       peripheral:(CBPeripheralManager *)peripheral {
+    BLETrackedCentral *tracked = [self trackedCentralForCentral:central createIfNeeded:YES];
+    if (!tracked.notifyEnabled) {
+        self.pendingNotifyPayload = [payload copy];
+        [self logEvent:@"TX" detail:[NSString stringWithFormat:@"reply stored: session=%@ notify OFF, use Read FFF1", tracked.sessionID]];
+        return NO;
+    }
+
+    BOOL didSend = [peripheral updateValue:payload ?: NSData.data
+                         forCharacteristic:self.demoCharacteristic
+                      onSubscribedCentrals:central ? @[ central ] : nil];
+    if (didSend) {
+        tracked.notifyCount += 1;
+        self.pendingNotifyPayload = nil;
+        [self logTX:central channel:@"notify/reply" data:payload extra:@"targeted"];
+    } else {
+        self.pendingNotifyPayload = [payload copy];
+        [self logEvent:@"TX" detail:[NSString stringWithFormat:@"reply queued: session=%@ CoreBluetooth back-pressure", tracked.sessionID]];
+    }
+    return didSend;
+}
+
 - (void)storeReplyAndAutoPush:(NSData *)responseData
                       peripheral:(CBPeripheralManager *)peripheral {
     [self.currentValue setData:responseData ?: NSData.data];
@@ -162,9 +252,21 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
     if (!tracked && createIfNeeded) {
         tracked = [[BLETrackedCentral alloc] init];
         tracked.identifier = uuid;
+        tracked.sessionID = [self shortSessionIDForUUID:uuid];
         self.trackedCentrals[uuid] = tracked;
     }
     return tracked;
+}
+
+- (nullable BLETrackedCentral *)trackedCentralForCentral:(nullable CBCentral *)central createIfNeeded:(BOOL)createIfNeeded {
+    return [self trackedCentralForUUID:[self uuidForCentral:central] createIfNeeded:createIfNeeded];
+}
+
+- (NSString *)shortSessionIDForUUID:(NSUUID *)uuid {
+    NSString *raw = uuid.UUIDString ?: kUnknownCentralUUIDString;
+    NSString *compact = [[raw stringByReplacingOccurrencesOfString:@"-" withString:@""] lowercaseString];
+    NSUInteger length = MIN((NSUInteger)8, compact.length);
+    return [NSString stringWithFormat:@"mac-%@", [compact substringToIndex:length]];
 }
 
 - (NSUUID *)uuidForCentral:(nullable CBCentral *)central {
@@ -232,8 +334,9 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
         return;
     }
     tracked.linkSeen = YES;
-    [self logEvent:@"LINK+" detail:[NSString stringWithFormat:@"central=%@ | connected — %@ | maxUpdate=%lu B | tracked=%lu",
+    [self logEvent:@"LINK+" detail:[NSString stringWithFormat:@"central=%@ session=%@ | connected — %@ | maxUpdate=%lu B | tracked=%lu",
                                     [self centralTag:central],
+                                    tracked.sessionID,
                                     reason,
                                     (unsigned long)tracked.maxUpdateLength,
                                     (unsigned long)self.trackedCentrals.count]];
@@ -246,8 +349,8 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
     tracked.notifyEnabled = YES;
     self.hasSubscribers = YES;
     [self logLinkConnectIfNeeded:central reason:@"notify subscribed on FFF1"];
-    [self logEvent:@"LINK+" detail:[NSString stringWithFormat:@"central=%@ | notify ON — push 00 AA + payload after each write",
-                                    [self centralTag:central]]];
+    [self logEvent:@"LINK+" detail:[NSString stringWithFormat:@"central=%@ session=%@ | notify ON — push reply/event after each write",
+                                    [self centralTag:central], tracked.sessionID]];
 }
 
 - (void)logLinkNotifyUnsubscribed:(CBCentral *)central {
@@ -287,8 +390,12 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
     if (!central) {
         [self logEvent:@"LINK" detail:@"central=nil on this ATT request (common on macOS read/write)"];
     }
+    BLETrackedCentral *tracked = [self trackedCentralForCentral:central createIfNeeded:YES];
     NSMutableString *detail = [NSMutableString stringWithFormat:@"central=%@ | %@",
                                [self centralTag:central], channel];
+    if (tracked.sessionID.length > 0) {
+        [detail appendFormat:@" | session=%@", tracked.sessionID];
+    }
     if (extra.length > 0) {
         [detail appendFormat:@" | %@", extra];
     }
@@ -297,8 +404,12 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
 }
 
 - (void)logTX:(nullable CBCentral *)central channel:(NSString *)channel data:(NSData *)data extra:(nullable NSString *)extra {
+    BLETrackedCentral *tracked = [self trackedCentralForCentral:central createIfNeeded:NO];
     NSMutableString *detail = [NSMutableString stringWithFormat:@"central=%@ | %@",
                                [self centralTag:central], channel];
+    if (tracked.sessionID.length > 0) {
+        [detail appendFormat:@" | session=%@", tracked.sessionID];
+    }
     if (extra.length > 0) {
         [detail appendFormat:@" | %@", extra];
     }
@@ -324,9 +435,10 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
     [self log:[NSString stringWithFormat:@"Primary service: %@ (16-bit FFF0)", kDemoServiceUUIDString]];
     [self log:[NSString stringWithFormat:@"Characteristic: %@ (16-bit FFF1)", kDemoCharacteristicUUIDString]];
     [self log:@"Characteristic properties: read, write, writeWithoutResponse, notify"];
-    [self log:@"Message rule: reply = 0x00 0xAA + bytes received (any payload)"];
-    [self log:@"Auto delivery: Notify push after each write (phone must enable Notify on FFF1)"];
-    [self log:@"Read FFF1 only if Notify is off — third-party apps: tap Notify before Write"];
+    [self log:[NSString stringWithFormat:@"Security rule: pair code %@ -> session token; protected ops include echo/telemetry/command", BLEProtocolDefaultPairCode]];
+    [self log:@"Message rule: JSON protocol replies over notify/read; non-protocol payload keeps 0x00 0xAA echo"];
+    [self log:@"Auto delivery: Notify pushes reply + session events after writes (phone must enable Notify on FFF1)"];
+    [self log:@"Read FFF1 only if Notify is off — third-party apps can still write raw bytes for 00AA echo"];
     [self log:@"--- end profile ---"];
 }
 
@@ -406,10 +518,12 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
         return;
     }
 
+    BLETrackedCentral *tracked = [self trackedCentralForCentral:central createIfNeeded:YES];
+    tracked.readCount += 1;
     [self logRX:central
          channel:@"read/FFF1"
             data:self.currentValue
-           extra:[NSString stringWithFormat:@"offset=%lu", (unsigned long)request.offset]];
+           extra:[NSString stringWithFormat:@"offset=%lu readCount=%lu", (unsigned long)request.offset, (unsigned long)tracked.readCount]];
 
     request.value = [self.currentValue subdataWithRange:NSMakeRange(request.offset, self.currentValue.length - request.offset)];
     [peripheral respondToRequest:request withResult:CBATTErrorSuccess];
@@ -441,14 +555,36 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
 
         NSData *incoming = request.value ?: NSData.data;
         [self logRX:central channel:@"write/FFF1" data:incoming extra:writeModeHint];
-        NSData *outgoing = [self echoReplyDataForIncoming:incoming];
-        [self logEvent:@"TX" detail:@"echo rule: 00 AA + RX payload"];
+        BLETrackedCentral *tracked = [self trackedCentralForCentral:central createIfNeeded:YES];
+        tracked.writeCount += 1;
+
+        BLEProtocolHandlerResult *protocolResult = nil;
+        NSData *outgoing = [self responseDataForIncoming:incoming central:central protocolResult:&protocolResult];
+        if (protocolResult) {
+            [self logEvent:@"TX" detail:[NSString stringWithFormat:@"protocol rule: %@", protocolResult.logSummary ?: @"response"]];
+        } else {
+            [self logEvent:@"TX" detail:@"legacy echo rule: 00 AA + RX payload"];
+        }
 
         // 先 ATT 应答，再 Notify 推送（部分 Central 在 write 完成后再处理 notify）。
         [peripheral respondToRequest:request withResult:CBATTErrorSuccess];
         [self logEvent:@"TX" detail:@"ATT write response=success"];
 
-        [self storeReplyAndAutoPush:outgoing peripheral:peripheral];
+        [self.currentValue setData:outgoing ?: NSData.data];
+        if (protocolResult) {
+            [self pushReply:outgoing toCentral:central peripheral:peripheral];
+            NSString *eventType = protocolResult.pairingSucceeded ? @"paired" : @"write";
+            [self pushSessionEventForCentral:central
+                                        type:eventType
+                                        body:@{
+                @"writes": @(tracked.writeCount),
+                @"reads": @(tracked.readCount),
+                @"notifies": @(tracked.notifyCount),
+            }
+                                  peripheral:peripheral];
+        } else {
+            [self pushReply:outgoing toCentral:central peripheral:peripheral];
+        }
     }
 }
 
@@ -458,11 +594,16 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
     [self logEvent:@"SYS" detail:@"Notify ON — write replies will auto-push (no Read needed)"];
 
     if (self.currentValue.length > 0) {
-        [self pushAutoNotifyReply:peripheral];
+        [self pushReply:self.currentValue toCentral:central peripheral:peripheral];
+        BLETrackedCentral *tracked = [self trackedCentralForCentral:central createIfNeeded:YES];
+        [self pushSessionEventForCentral:central
+                                    type:@"subscribed"
+                                    body:@{ @"notifyMax": @(tracked.maxUpdateLength) }
+                              peripheral:peripheral];
     }
     if (self.pendingNotifyPayload.length > 0) {
         [self.currentValue setData:self.pendingNotifyPayload];
-        [self pushAutoNotifyReply:peripheral];
+        [self pushReply:self.pendingNotifyPayload toCentral:central peripheral:peripheral];
     }
 }
 

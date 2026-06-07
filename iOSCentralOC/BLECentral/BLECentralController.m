@@ -15,6 +15,7 @@ static NSString * const kCharacteristicUUIDString = @"0000FFF1-0000-1000-8000-00
 @property (nonatomic, strong) NSMutableArray<CBPeripheral *> *mutableDiscoveredPeripherals;
 @property (nonatomic, strong) NSMutableSet<NSUUID *> *discoveredIDs;
 @property (nonatomic) NSUInteger protocolSequence;
+@property (nonatomic, copy, nullable) NSString *sessionToken;
 @property (nonatomic) BOOL scanning;
 @property (nonatomic) BOOL connected;
 @property (nonatomic) BOOL notifying;
@@ -107,16 +108,28 @@ static NSString * const kCharacteristicUUIDString = @"0000FFF1-0000-1000-8000-00
     [self log:subscribe ? @"Subscribing to notifications..." : @"Unsubscribing from notifications..."];
 }
 
+- (void)sendProtocolPairCode:(NSString *)code {
+    [self sendProtocolOperation:BLEProtocolOpPair body:@{ @"code": code ?: @"" } includeToken:NO];
+}
+
 - (void)sendProtocolPing {
-    [self sendProtocolOperation:BLEProtocolOpPing body:@{}];
+    [self sendProtocolOperation:BLEProtocolOpPing body:@{} includeToken:NO];
 }
 
 - (void)sendProtocolGetInfo {
-    [self sendProtocolOperation:BLEProtocolOpGetInfo body:@{}];
+    [self sendProtocolOperation:BLEProtocolOpGetInfo body:@{} includeToken:NO];
 }
 
 - (void)sendProtocolEcho:(NSString *)text {
-    [self sendProtocolOperation:BLEProtocolOpEcho body:@{ @"text": text ?: @"" }];
+    [self sendProtocolOperation:BLEProtocolOpEcho body:@{ @"text": text ?: @"" } includeToken:YES];
+}
+
+- (void)sendProtocolTelemetry {
+    [self sendProtocolOperation:BLEProtocolOpTelemetry body:@{} includeToken:YES];
+}
+
+- (void)sendProtocolCommand:(NSString *)name {
+    [self sendProtocolOperation:BLEProtocolOpCommand body:@{ @"name": name ?: @"identify" } includeToken:YES];
 }
 
 - (void)sendLegacyText:(NSString *)text {
@@ -124,10 +137,13 @@ static NSString * const kCharacteristicUUIDString = @"0000FFF1-0000-1000-8000-00
     [self writeData:data label:@"legacy"];
 }
 
-- (void)sendProtocolOperation:(NSString *)operation body:(NSDictionary *)body {
+- (void)sendProtocolOperation:(NSString *)operation body:(NSDictionary *)body includeToken:(BOOL)includeToken {
     self.protocolSequence += 1;
     NSString *messageID = [NSString stringWithFormat:@"ios-%lu", (unsigned long)self.protocolSequence];
-    NSDictionary *request = [BLEProtocolMessage requestWithOperation:operation messageID:messageID body:body];
+    NSDictionary *request = [BLEProtocolMessage requestWithOperation:operation
+                                                           messageID:messageID
+                                                               token:includeToken ? self.sessionToken : nil
+                                                                body:body];
     NSError *error = nil;
     NSData *data = [BLEProtocolMessage dataFromDictionary:request error:&error];
     if (!data) {
@@ -256,7 +272,7 @@ static NSString * const kCharacteristicUUIDString = @"0000FFF1-0000-1000-8000-00
         if ([characteristic.UUID isEqual:[CBUUID UUIDWithString:kCharacteristicUUIDString]]) {
             self.demoCharacteristic = characteristic;
             [self log:[NSString stringWithFormat:@"Characteristic ready: %@ props=0x%lx", characteristic.UUID.UUIDString, (unsigned long)characteristic.properties]];
-            [self log:@"Auto: subscribe Notify first (Mac auto-pushes 00AA+payload after write)"];
+            [self log:@"Auto: subscribe Notify, read current value, then pair with demo code."];
             [self subscribeNotifications:YES];
             return;
         }
@@ -283,8 +299,41 @@ static NSString * const kCharacteristicUUIDString = @"0000FFF1-0000-1000-8000-00
                    label, (unsigned long)body.length, text ?: @"(binary)"]];
         return;
     }
+
+    NSError *error = nil;
+    NSDictionary *message = [BLEProtocolMessage dictionaryFromData:data error:&error];
+    if ([BLEProtocolMessage isProtocolEnvelope:message]) {
+        [self captureSessionTokenFromMessage:message];
+        [self log:[NSString stringWithFormat:@"%@ protocol: %@", label, [BLEProtocolMessage summaryForDictionary:message]]];
+        [self logProtocolBodyForMessage:message];
+        return;
+    }
+
     NSString *text = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: data.description;
     [self log:[NSString stringWithFormat:@"%@ raw: %@", label, text]];
+}
+
+- (void)captureSessionTokenFromMessage:(NSDictionary *)message {
+    NSString *token = [message[BLEProtocolKeyToken] isKindOfClass:[NSString class]] ? message[BLEProtocolKeyToken] : nil;
+    if (token.length == 0 &&
+        [message[BLEProtocolKeyBody] isKindOfClass:[NSDictionary class]]) {
+        token = message[BLEProtocolKeyBody][BLEProtocolKeyToken];
+    }
+    if (token.length > 0 && ![token isEqualToString:self.sessionToken]) {
+        self.sessionToken = token;
+        [self log:[NSString stringWithFormat:@"AUTH token captured: %@", token]];
+    }
+}
+
+- (void)logProtocolBodyForMessage:(NSDictionary *)message {
+    NSDictionary *body = [message[BLEProtocolKeyBody] isKindOfClass:[NSDictionary class]] ? message[BLEProtocolKeyBody] : nil;
+    if (body.count == 0) {
+        return;
+    }
+    NSError *error = nil;
+    NSData *bodyData = [NSJSONSerialization dataWithJSONObject:body options:0 error:&error];
+    NSString *bodyText = [[NSString alloc] initWithData:bodyData encoding:NSUTF8StringEncoding] ?: @"{}";
+    [self log:[NSString stringWithFormat:@"BODY %@", bodyText]];
 }
 
 - (void)peripheral:(CBPeripheral *)peripheral didWriteValueForCharacteristic:(CBCharacteristic *)characteristic error:(NSError *)error {
@@ -302,8 +351,9 @@ static NSString * const kCharacteristicUUIDString = @"0000FFF1-0000-1000-8000-00
     }
     self.notifying = characteristic.isNotifying;
     if (characteristic.isNotifying) {
-        [self log:@"Notifications enabled — writes will auto-receive 00AA+payload on notify."];
+        [self log:@"Notifications enabled — protocol replies and events arrive by notify."];
         [self readCharacteristic];
+        [self sendProtocolPairCode:BLEProtocolDefaultPairCode];
     } else {
         [self log:@"Notifications disabled."];
     }

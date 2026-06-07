@@ -1,5 +1,7 @@
 #import "BLECentralController.h"
 #import <CoreBluetooth/CoreBluetooth.h>
+#import "BLEProtocolConstants.h"
+#import "BLEProtocolMessage.h"
 
 static NSString * const kTargetPeripheralName = @"MacBLE-Demo";
 static NSString * const kServiceUUIDString = @"0000FFF0-0000-1000-8000-00805F9B34FB";
@@ -16,6 +18,8 @@ static NSString * const kCharacteristicUUIDString = @"0000FFF1-0000-1000-8000-00
 @property (nonatomic) BOOL scanning;
 @property (nonatomic) BOOL connected;
 @property (nonatomic) BOOL notifyEnabled;
+@property (nonatomic) NSUInteger protocolSequence;
+@property (nonatomic, copy, nullable) NSString *sessionToken;
 
 @end
 
@@ -124,15 +128,64 @@ static NSString * const kCharacteristicUUIDString = @"0000FFF1-0000-1000-8000-00
 }
 
 - (void)writeText:(NSString *)text {
+    [self sendProtocolEcho:text];
+}
+
+- (void)sendPairCode:(NSString *)code {
+    [self sendProtocolOperation:BLEProtocolOpPair body:@{ @"code": code ?: @"" } includeToken:NO];
+}
+
+- (void)sendProtocolPing {
+    [self sendProtocolOperation:BLEProtocolOpPing body:@{} includeToken:NO];
+}
+
+- (void)sendProtocolGetInfo {
+    [self sendProtocolOperation:BLEProtocolOpGetInfo body:@{} includeToken:NO];
+}
+
+- (void)sendProtocolEcho:(NSString *)text {
+    [self sendProtocolOperation:BLEProtocolOpEcho body:@{ @"text": text ?: @"" } includeToken:YES];
+}
+
+- (void)sendTelemetryRequest {
+    [self sendProtocolOperation:BLEProtocolOpTelemetry body:@{} includeToken:YES];
+}
+
+- (void)sendCommandNamed:(NSString *)name {
+    [self sendProtocolOperation:BLEProtocolOpCommand body:@{ @"name": name ?: @"identify" } includeToken:YES];
+}
+
+- (void)sendRawText:(NSString *)text {
+    NSData *data = [(text ?: @"") dataUsingEncoding:NSUTF8StringEncoding];
+    [self writeData:data label:@"raw legacy"];
+}
+
+- (void)sendProtocolOperation:(NSString *)operation body:(NSDictionary *)body includeToken:(BOOL)includeToken {
+    self.protocolSequence += 1;
+    NSString *messageID = [NSString stringWithFormat:@"mac-%lu", (unsigned long)self.protocolSequence];
+    NSDictionary *request = [BLEProtocolMessage requestWithOperation:operation
+                                                           messageID:messageID
+                                                               token:includeToken ? self.sessionToken : nil
+                                                                body:body];
+    NSError *error = nil;
+    NSData *data = [BLEProtocolMessage dataFromDictionary:request error:&error];
+    if (!data) {
+        [self logEvent:@"TX" detail:[NSString stringWithFormat:@"protocol encode failed: %@", error.localizedDescription]];
+        return;
+    }
+    [self writeData:data label:[NSString stringWithFormat:@"protocol %@", operation]];
+}
+
+- (void)writeData:(NSData *)data label:(NSString *)label {
     if (!self.demoCharacteristic || !self.connectedPeripheral) {
         [self logEvent:@"TX" detail:@"write skipped: characteristic missing"];
         return;
     }
-    NSData *data = [(text ?: @"") dataUsingEncoding:NSUTF8StringEncoding];
     CBCharacteristicWriteType writeType = [self writeTypeForCharacteristic:self.demoCharacteristic];
     [self.connectedPeripheral writeValue:data forCharacteristic:self.demoCharacteristic type:writeType];
     NSString *mode = writeType == CBCharacteristicWriteWithResponse ? @"withResponse" : @"withoutResponse";
-    [self logEvent:@"TX" detail:[NSString stringWithFormat:@"write %@: %lu B text=%@", mode, (unsigned long)data.length, text ?: @""]];
+    NSString *preview = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: data.description;
+    [self logEvent:@"TX" detail:[NSString stringWithFormat:@"write %@ (%@): %lu B text=%@", mode, label, (unsigned long)data.length, preview]];
 }
 
 #pragma mark - CBCentralManagerDelegate
@@ -225,6 +278,7 @@ static NSString * const kCharacteristicUUIDString = @"0000FFF1-0000-1000-8000-00
             [self logEvent:@"GATT" detail:[NSString stringWithFormat:@"characteristic ready: %@ props=0x%lx", characteristic.UUID.UUIDString, (unsigned long)characteristic.properties]];
             [self setNotifyEnabled:YES];
             [self readValue];
+            [self sendPairCode:BLEProtocolDefaultPairCode];
             [self notifyStateChanged];
             return;
         }
@@ -274,8 +328,43 @@ static NSString * const kCharacteristicUUIDString = @"0000FFF1-0000-1000-8000-00
                                      label, (unsigned long)body.length, [self textOrHexForData:body]]];
         return;
     }
+
+    NSError *error = nil;
+    NSDictionary *message = [BLEProtocolMessage dictionaryFromData:data error:&error];
+    if ([BLEProtocolMessage isProtocolEnvelope:message]) {
+        [self captureSessionTokenFromMessage:message];
+        [self logEvent:@"RX" detail:[NSString stringWithFormat:@"%@ protocol: %@", label, [BLEProtocolMessage summaryForDictionary:message]]];
+        [self logProtocolBodyForMessage:message];
+        return;
+    }
+
     [self logEvent:@"RX" detail:[NSString stringWithFormat:@"%@ raw: %lu B text=%@",
                                  label, (unsigned long)data.length, [self textOrHexForData:data]]];
+}
+
+- (void)captureSessionTokenFromMessage:(NSDictionary *)message {
+    NSString *token = [message[BLEProtocolKeyToken] isKindOfClass:[NSString class]] ? message[BLEProtocolKeyToken] : nil;
+    if (token.length == 0 &&
+        [message[BLEProtocolKeyBody] isKindOfClass:[NSDictionary class]]) {
+        token = message[BLEProtocolKeyBody][BLEProtocolKeyToken];
+    }
+    if (token.length > 0 && ![token isEqualToString:self.sessionToken]) {
+        self.sessionToken = token;
+        [self logEvent:@"AUTH" detail:[NSString stringWithFormat:@"session token captured: %@", token]];
+    }
+}
+
+- (void)logProtocolBodyForMessage:(NSDictionary *)message {
+    NSDictionary *body = [message[BLEProtocolKeyBody] isKindOfClass:[NSDictionary class]] ? message[BLEProtocolKeyBody] : nil;
+    if (body.count == 0) {
+        return;
+    }
+    NSError *error = nil;
+    NSData *bodyData = [NSJSONSerialization dataWithJSONObject:body options:0 error:&error];
+    NSString *bodyText = [[NSString alloc] initWithData:bodyData encoding:NSUTF8StringEncoding] ?: @"{}";
+    NSString *operation = message[BLEProtocolKeyOperation] ?: @"?";
+    NSString *category = [operation isEqualToString:BLEProtocolOpEvent] ? @"EVT" : @"RX";
+    [self logEvent:category detail:[NSString stringWithFormat:@"body=%@", bodyText]];
 }
 
 - (BOOL)isEchoReply:(NSData *)data {
@@ -309,6 +398,7 @@ static NSString * const kCharacteristicUUIDString = @"0000FFF1-0000-1000-8000-00
     self.demoCharacteristic = nil;
     self.connected = NO;
     self.notifyEnabled = NO;
+    self.sessionToken = nil;
     [self notifyStateChanged];
 }
 

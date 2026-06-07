@@ -1,6 +1,6 @@
 # FlutterCentral BLE Central
 
-Flutter macOS app that uses `flutter_blue_plus` to scan and connect to the `MacBLE-Demo` peripheral.
+Flutter macOS app that uses `flutter_blue_plus` to scan, connect, pair, and exercise the `MacBLE-Demo` peripheral.
 
 ## Run
 
@@ -9,6 +9,8 @@ flutter run -d macos
 ```
 
 Start `../MacPeripheralOC/BLEPeripheral.xcodeproj` first, then allow Bluetooth permission in the Flutter app.
+
+After connecting, the app auto-enables Notify and sends Pair code `135790`. Use **Pair**, **Ping**, **Info**, **Echo**, **Telemetry**, **Command**, **Raw**, **Read**, and **Notify On/Off** to compare JSON protocol traffic with legacy raw echo traffic.
 
 ## What This Project Teaches
 
@@ -20,6 +22,8 @@ Start `../MacPeripheralOC/BLEPeripheral.xcodeproj` first, then allow Bluetooth p
 - `BluetoothCharacteristic.write`
 - `BluetoothCharacteristic.setNotifyValue`
 - `onValueReceived` for notify/read data
+- JSON envelope encoding/decoding in Dart
+- Session token capture from `paired` responses
 
 ## Sources
 
@@ -33,4 +37,5 @@ Start `../MacPeripheralOC/BLEPeripheral.xcodeproj` first, then allow Bluetooth p
 - Peripheral name: `MacBLE-Demo`
 - Service: `0000FFF0-0000-1000-8000-00805F9B34FB`
 - Characteristic: `0000FFF1-0000-1000-8000-00805F9B34FB`
-- Echo rule: write any payload, receive `00 AA` + original payload by notify or read
+- Protocol rule: Pair with `135790`, then include token for `echo`, `telemetry`, and `command`
+- Raw rule: write any non-protocol payload, receive `00 AA` + original payload by notify or read

@@ -22,9 +22,12 @@ typedef void (^BLECentralDiscoveryHandler)(void);
 - (void)disconnect;
 - (void)readCharacteristic;
 - (void)subscribeNotifications:(BOOL)subscribe;
+- (void)sendProtocolPairCode:(NSString *)code;
 - (void)sendProtocolPing;
 - (void)sendProtocolGetInfo;
 - (void)sendProtocolEcho:(NSString *)text;
+- (void)sendProtocolTelemetry;
+- (void)sendProtocolCommand:(NSString *)name;
 - (void)sendLegacyText:(NSString *)text;
 
 @end

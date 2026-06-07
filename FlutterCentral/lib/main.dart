@@ -6,8 +6,12 @@ void main() {
   runApp(const FlutterCentralApp());
 }
 
+typedef BleCentralControllerFactory = BleCentralController Function();
+
 class FlutterCentralApp extends StatelessWidget {
-  const FlutterCentralApp({super.key});
+  const FlutterCentralApp({super.key, this.controllerFactory});
+
+  final BleCentralControllerFactory? controllerFactory;
 
   @override
   Widget build(BuildContext context) {
@@ -18,13 +22,15 @@ class FlutterCentralApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF0F766E)),
         useMaterial3: true,
       ),
-      home: const BleCentralPage(),
+      home: BleCentralPage(controllerFactory: controllerFactory),
     );
   }
 }
 
 class BleCentralPage extends StatefulWidget {
-  const BleCentralPage({super.key});
+  const BleCentralPage({super.key, this.controllerFactory});
+
+  final BleCentralControllerFactory? controllerFactory;
 
   @override
   State<BleCentralPage> createState() => _BleCentralPageState();
@@ -32,6 +38,9 @@ class BleCentralPage extends StatefulWidget {
 
 class _BleCentralPageState extends State<BleCentralPage> {
   late final BleCentralController _controller;
+  final TextEditingController _pairCodeController = TextEditingController(
+    text: bleDefaultPairCode,
+  );
   final TextEditingController _payloadController = TextEditingController(
     text: 'hello from Flutter macOS',
   );
@@ -39,11 +48,13 @@ class _BleCentralPageState extends State<BleCentralPage> {
   @override
   void initState() {
     super.initState();
-    _controller = BleCentralController()..addListener(_refresh);
+    _controller = (widget.controllerFactory ?? BleCentralController.new)()
+      ..addListener(_refresh);
   }
 
   @override
   void dispose() {
+    _pairCodeController.dispose();
     _payloadController.dispose();
     _controller
       ..removeListener(_refresh)
@@ -74,7 +85,7 @@ class _BleCentralPageState extends State<BleCentralPage> {
           final isWide = constraints.maxWidth >= 920;
           final panels = [
             Expanded(child: _buildScannerPanel()),
-            Expanded(child: _buildGattPanel()),
+            Expanded(child: _buildGattPanel(isWide: isWide)),
           ];
           return Padding(
             padding: const EdgeInsets.all(16),
@@ -83,7 +94,18 @@ class _BleCentralPageState extends State<BleCentralPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: panels,
                   )
-                : Column(children: panels),
+                : ListView(
+                    children: [
+                      SizedBox(height: 320, child: _buildScannerPanel()),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        height: constraints.maxHeight < 520
+                            ? 420
+                            : constraints.maxHeight - 36,
+                        child: _buildGattPanel(isWide: false),
+                      ),
+                    ],
+                  ),
           );
         },
       ),
@@ -97,36 +119,43 @@ class _BleCentralPageState extends State<BleCentralPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _buildHeader('Scan', 'Target service FFF0, name MacBLE-Demo'),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                FilledButton.icon(
-                  onPressed: _controller.isScanning
-                      ? null
-                      : _controller.startScan,
-                  icon: const Icon(Icons.radar),
-                  label: const Text('Scan'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _controller.isScanning
-                      ? _controller.stopScan
-                      : null,
-                  icon: const Icon(Icons.stop),
-                  label: const Text('Stop'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _controller.connectedDevice == null
-                      ? null
-                      : _controller.disconnect,
-                  icon: const Icon(Icons.link_off),
-                  label: const Text('Disconnect'),
-                ),
-              ],
+            SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _buildHeader('Scan', 'Target service FFF0, name MacBLE-Demo'),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      FilledButton.icon(
+                        onPressed: _controller.isScanning
+                            ? null
+                            : _controller.startScan,
+                        icon: const Icon(Icons.radar),
+                        label: const Text('Scan'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: _controller.isScanning
+                            ? _controller.stopScan
+                            : null,
+                        icon: const Icon(Icons.stop),
+                        label: const Text('Stop'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: _controller.connectedDevice == null
+                            ? null
+                            : _controller.disconnect,
+                        icon: const Icon(Icons.link_off),
+                        label: const Text('Disconnect'),
+                      ),
+                    ],
+                  ),
+                  const Divider(height: 28),
+                ],
+              ),
             ),
-            const Divider(height: 28),
             Expanded(child: _buildDeviceList()),
           ],
         ),
@@ -134,60 +163,127 @@ class _BleCentralPageState extends State<BleCentralPage> {
     );
   }
 
-  Widget _buildGattPanel() {
+  Widget _buildGattPanel({required bool isWide}) {
     return Card(
-      margin: const EdgeInsets.only(left: 12),
+      margin: EdgeInsets.only(left: isWide ? 12 : 0, top: isWide ? 0 : 12),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _buildHeader('GATT', _controller.connectionLabel),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _payloadController,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                labelText: 'Write payload',
+            Expanded(
+              flex: 2,
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _buildHeader('GATT', _controller.connectionLabel),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _pairCodeController,
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        labelText: 'Pair code',
+                      ),
+                      onSubmitted: _sendPair,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _payloadController,
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        labelText: 'Echo payload or command name',
+                      ),
+                      onSubmitted: _sendPayload,
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        FilledButton.icon(
+                          onPressed: _controller.demoCharacteristic == null
+                              ? null
+                              : () => _sendPair(_pairCodeController.text),
+                          icon: const Icon(Icons.lock_open),
+                          label: const Text('Pair'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: _controller.demoCharacteristic == null
+                              ? null
+                              : _controller.sendPing,
+                          icon: const Icon(Icons.bolt),
+                          label: const Text('Ping'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: _controller.demoCharacteristic == null
+                              ? null
+                              : _controller.sendInfo,
+                          icon: const Icon(Icons.info_outline),
+                          label: const Text('Info'),
+                        ),
+                        FilledButton.icon(
+                          onPressed: _controller.demoCharacteristic == null
+                              ? null
+                              : () => _sendPayload(_payloadController.text),
+                          icon: const Icon(Icons.send),
+                          label: const Text('Echo'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: _controller.demoCharacteristic == null
+                              ? null
+                              : _controller.sendTelemetry,
+                          icon: const Icon(Icons.monitor_heart_outlined),
+                          label: const Text('Telemetry'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: _controller.demoCharacteristic == null
+                              ? null
+                              : () => _sendCommand(_payloadController.text),
+                          icon: const Icon(Icons.terminal),
+                          label: const Text('Command'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: _controller.demoCharacteristic == null
+                              ? null
+                              : () => _controller.sendRawText(
+                                  _payloadController.text,
+                                ),
+                          icon: const Icon(Icons.data_object),
+                          label: const Text('Raw'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: _controller.demoCharacteristic == null
+                              ? null
+                              : _controller.readValue,
+                          icon: const Icon(Icons.download),
+                          label: const Text('Read'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: _controller.demoCharacteristic == null
+                              ? null
+                              : () => _controller.setNotify(
+                                  !_controller.notifyEnabled,
+                                ),
+                          icon: Icon(
+                            _controller.notifyEnabled
+                                ? Icons.notifications_active
+                                : Icons.notifications_none,
+                          ),
+                          label: Text(
+                            _controller.notifyEnabled
+                                ? 'Notify Off'
+                                : 'Notify On',
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Divider(height: 28),
+                  ],
+                ),
               ),
-              onSubmitted: _sendPayload,
             ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                FilledButton.icon(
-                  onPressed: _controller.demoCharacteristic == null
-                      ? null
-                      : () => _sendPayload(_payloadController.text),
-                  icon: const Icon(Icons.send),
-                  label: const Text('Write'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _controller.demoCharacteristic == null
-                      ? null
-                      : _controller.readValue,
-                  icon: const Icon(Icons.download),
-                  label: const Text('Read'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _controller.demoCharacteristic == null
-                      ? null
-                      : () => _controller.setNotify(!_controller.notifyEnabled),
-                  icon: Icon(
-                    _controller.notifyEnabled
-                        ? Icons.notifications_active
-                        : Icons.notifications_none,
-                  ),
-                  label: Text(
-                    _controller.notifyEnabled ? 'Notify Off' : 'Notify On',
-                  ),
-                ),
-              ],
-            ),
-            const Divider(height: 28),
-            Expanded(child: _buildLogList()),
+            Expanded(flex: 1, child: _buildLogList()),
           ],
         ),
       ),
@@ -243,5 +339,13 @@ class _BleCentralPageState extends State<BleCentralPage> {
 
   void _sendPayload(String text) {
     _controller.writeText(text);
+  }
+
+  void _sendPair(String code) {
+    _controller.sendPairCode(code);
+  }
+
+  void _sendCommand(String text) {
+    _controller.sendCommand(text.isEmpty ? 'identify' : text);
   }
 }

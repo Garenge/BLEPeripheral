@@ -6,11 +6,18 @@
 @property (nonatomic, strong) NSWindow *window;
 @property (nonatomic, strong) NSPopUpButton *deviceMenu;
 @property (nonatomic, strong) NSTextField *payloadField;
+@property (nonatomic, strong) NSTextField *pairCodeField;
 @property (nonatomic, strong) NSButton *scanButton;
 @property (nonatomic, strong) NSButton *connectButton;
 @property (nonatomic, strong) NSButton *disconnectButton;
 @property (nonatomic, strong) NSButton *readButton;
 @property (nonatomic, strong) NSButton *writeButton;
+@property (nonatomic, strong) NSButton *pairButton;
+@property (nonatomic, strong) NSButton *pingButton;
+@property (nonatomic, strong) NSButton *infoButton;
+@property (nonatomic, strong) NSButton *telemetryButton;
+@property (nonatomic, strong) NSButton *commandButton;
+@property (nonatomic, strong) NSButton *rawButton;
 @property (nonatomic, strong) NSButton *notifyButton;
 @property (nonatomic, strong) NSTextView *logTextView;
 @property (nonatomic, strong) BLECentralController *centralController;
@@ -62,7 +69,7 @@
     NSTextField *titleLabel = [self labelWithText:@"macOS Objective-C BLE Central"];
     titleLabel.font = [NSFont boldSystemFontOfSize:20];
 
-    NSTextField *infoLabel = [self labelWithText:@"Scan FFF0 -> connect MacBLE-Demo -> discover FFF1 -> read/write/notify"];
+    NSTextField *infoLabel = [self labelWithText:@"Scan FFF0 -> Pair code -> token-secured Ping/Info/Echo/Telemetry/Command over FFF1"];
     infoLabel.font = [NSFont systemFontOfSize:13];
     infoLabel.textColor = NSColor.secondaryLabelColor;
 
@@ -123,19 +130,38 @@
 }
 
 - (NSStackView *)buildGattControls {
+    self.pairCodeField = [[NSTextField alloc] initWithFrame:NSZeroRect];
+    self.pairCodeField.stringValue = @"135790";
+    self.pairCodeField.placeholderString = @"Pair code";
+    self.pairCodeField.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.pairCodeField.widthAnchor constraintGreaterThanOrEqualToConstant:90].active = YES;
+
     self.payloadField = [[NSTextField alloc] initWithFrame:NSZeroRect];
     self.payloadField.stringValue = @"hello from Objective-C macOS";
-    self.payloadField.placeholderString = @"Write payload";
+    self.payloadField.placeholderString = @"Echo payload or command name";
     self.payloadField.translatesAutoresizingMaskIntoConstraints = NO;
     [self.payloadField.widthAnchor constraintGreaterThanOrEqualToConstant:300].active = YES;
 
-    self.writeButton = [self buttonWithTitle:@"Write" action:@selector(writeTapped:)];
+    self.pairButton = [self buttonWithTitle:@"Pair" action:@selector(pairTapped:)];
+    self.pingButton = [self buttonWithTitle:@"Ping" action:@selector(pingTapped:)];
+    self.infoButton = [self buttonWithTitle:@"Info" action:@selector(infoTapped:)];
+    self.writeButton = [self buttonWithTitle:@"Echo" action:@selector(writeTapped:)];
+    self.telemetryButton = [self buttonWithTitle:@"Telemetry" action:@selector(telemetryTapped:)];
+    self.commandButton = [self buttonWithTitle:@"Command" action:@selector(commandTapped:)];
+    self.rawButton = [self buttonWithTitle:@"Raw" action:@selector(rawTapped:)];
     self.readButton = [self buttonWithTitle:@"Read" action:@selector(readTapped:)];
     self.notifyButton = [self buttonWithTitle:@"Notify On" action:@selector(notifyTapped:)];
 
     NSStackView *stack = [NSStackView stackViewWithViews:@[
+        self.pairCodeField,
+        self.pairButton,
+        self.pingButton,
+        self.infoButton,
         self.payloadField,
         self.writeButton,
+        self.telemetryButton,
+        self.commandButton,
+        self.rawButton,
         self.readButton,
         self.notifyButton,
     ]];
@@ -208,6 +234,31 @@
     [self.centralController writeText:self.payloadField.stringValue];
 }
 
+- (void)pairTapped:(id)sender {
+    [self.centralController sendPairCode:self.pairCodeField.stringValue];
+}
+
+- (void)pingTapped:(id)sender {
+    [self.centralController sendProtocolPing];
+}
+
+- (void)infoTapped:(id)sender {
+    [self.centralController sendProtocolGetInfo];
+}
+
+- (void)telemetryTapped:(id)sender {
+    [self.centralController sendTelemetryRequest];
+}
+
+- (void)commandTapped:(id)sender {
+    NSString *name = self.payloadField.stringValue.length > 0 ? self.payloadField.stringValue : @"identify";
+    [self.centralController sendCommandNamed:name];
+}
+
+- (void)rawTapped:(id)sender {
+    [self.centralController sendRawText:self.payloadField.stringValue];
+}
+
 - (void)readTapped:(id)sender {
     [self.centralController readValue];
 }
@@ -235,8 +286,14 @@
         self.scanButton.title = self.centralController.isScanning ? @"Stop Scan" : @"Scan";
         self.connectButton.enabled = labels.count > 0 && !self.centralController.isConnected;
         self.disconnectButton.enabled = self.centralController.isConnected;
+        self.pairButton.enabled = self.centralController.isCharacteristicReady;
+        self.pingButton.enabled = self.centralController.isCharacteristicReady;
+        self.infoButton.enabled = self.centralController.isCharacteristicReady;
         self.readButton.enabled = self.centralController.isCharacteristicReady;
         self.writeButton.enabled = self.centralController.isCharacteristicReady;
+        self.telemetryButton.enabled = self.centralController.isCharacteristicReady;
+        self.commandButton.enabled = self.centralController.isCharacteristicReady;
+        self.rawButton.enabled = self.centralController.isCharacteristicReady;
         self.notifyButton.enabled = self.centralController.isCharacteristicReady;
         self.notifyButton.title = self.centralController.isNotifyEnabled ? @"Notify Off" : @"Notify On";
     });

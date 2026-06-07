@@ -18,9 +18,10 @@ macOS app that advertises `MacBLE-Demo` and exposes one GATT service for iPhone 
 | 手机写入 | 协议推荐 **Write 带响应**（ATT 仅 ACK，不带 JSON） |
 | Mac 业务回复 | **Notify**（已订阅）或 **Read FFF1**（最后一次响应） |
 | 权限 | 可读、可写 |
-| 初始 Read 值 | UTF-8 文本 `Hello from macOS BLE Peripheral` |
-| 订阅后周期 Notify | 每 **2 秒** 一次，载荷为 JSON `op=tick`（协议 v1） |
-| 写入 | JSON 协议请求 → 响应写入特征值；若已订阅则 **notify 推送响应**；非协议 UTF-8 走 legacy 存取 |
+| 初始 Read 值 | `00 AA`（空 legacy 回显） |
+| 订阅后 Notify | 推送最近响应，并推送 JSON `op=event` session 事件 |
+| 写入 | JSON 协议请求 → 响应写入特征值；若已订阅则 **定向 notify 推送响应**；非协议 payload 走 legacy `00 AA` 回显 |
+| 安全规则 | `pair` code `135790` → session token；`echo`/`telemetry`/`command` 需携带 token |
 
 启动后日志窗口会打印 `--- Mac BLE GATT profile ---` 摘要（与上表一致）。
 
@@ -64,7 +65,7 @@ macOS app that advertises `MacBLE-Demo` and exposes one GATT service for iPhone 
 
 1. **启动后** 应至少看到 `[SYS] Log window ready` 和 `--- Mac BLE GATT profile ---`。若没有，请 Clean Build 后重新 Run，并看 Console.app 里 `BLEPeripheral:` 前缀。
 2. **仅 iPhone 显示 Connected 不够** — Mac Peripheral **不会**在链路建立时打 `[LINK+]`，必须在 **FFF1** 上 **Read / Write / Subscribe** 才有 `[RX]`/`[TX]`/`[LINK+]`。
-3. 使用本仓库 **BLECentral** iOS App：发现特征后会 **自动 Read + 订阅 Notify**，Mac 应出现 `[LINK+]`、`[RX] read/FFF1`、`[TX] notify/tick`。
+3. 使用本仓库 **BLECentral** iOS App：发现特征后会 **自动订阅 Notify + Pair**，Mac 应出现 `[LINK+]`、`[RX] write/FFF1`、`[AUTH]`/`[TX] notify/event` 相关日志。
 4. 系统设置 → 隐私与安全性 → **蓝牙** → 允许 BLEPeripheral；本工程已加 `BLEPeripheral.entitlements`（蓝牙 + App Sandbox）。
 
 ## Sources
@@ -76,5 +77,5 @@ macOS app that advertises `MacBLE-Demo` and exposes one GATT service for iPhone 
 
 Scheme **BLEPeripheral** → **My Mac**. Requires Bluetooth permission and powered-on Bluetooth.
 
-Current FFF1 rule: [../ble_simple_echo.md](../ble_simple_echo.md)  
-Legacy JSON protocol: [../ble_protocol.md](../ble_protocol.md)
+Legacy raw FFF1 rule: [../ble_simple_echo.md](../ble_simple_echo.md)  
+JSON protocol and session events: [../ble_protocol.md](../ble_protocol.md)

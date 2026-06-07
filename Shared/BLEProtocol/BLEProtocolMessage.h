@@ -12,13 +12,28 @@ NS_ASSUME_NONNULL_BEGIN
                             messageID:(NSString *)messageID
                                  body:(NSDictionary *)body;
 
++ (NSDictionary *)requestWithOperation:(NSString *)operation
+                            messageID:(NSString *)messageID
+                                 token:(nullable NSString *)token
+                                  body:(NSDictionary *)body;
+
 + (NSDictionary *)successResponseForOperation:(NSString *)operation
                                     messageID:(NSString *)messageID
                                          body:(NSDictionary *)body;
 
++ (NSDictionary *)successResponseForOperation:(NSString *)operation
+                                    messageID:(NSString *)messageID
+                                         token:(nullable NSString *)token
+                                          body:(NSDictionary *)body;
+
 + (NSDictionary *)errorResponseWithMessageID:(nullable NSString *)messageID
                                         code:(NSString *)code
                                      message:(NSString *)message;
+
++ (NSDictionary *)eventWithType:(NSString *)type
+                       sequence:(NSUInteger)sequence
+                        session:(nullable NSString *)session
+                           body:(NSDictionary *)body;
 
 + (NSString *)summaryForDictionary:(NSDictionary *)dictionary;
 

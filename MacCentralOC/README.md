@@ -12,7 +12,8 @@ Pure macOS Objective-C app that scans for `MacBLE-Demo`, connects to service `FF
 2. Run scheme **MacCentralOC** on **My Mac**.
 3. Allow Bluetooth permission.
 4. Click **Scan**, select `MacBLE-Demo`, click **Connect**.
-5. Use **Write**, **Read**, and **Notify On/Off** to observe the GATT lifecycle.
+5. The app auto-enables Notify and sends Pair code `135790`.
+6. Use **Pair**, **Ping**, **Info**, **Echo**, **Telemetry**, **Command**, **Raw**, **Read**, and **Notify On/Off** to observe the GATT lifecycle.
 
 ## What This Project Teaches
 
@@ -23,6 +24,8 @@ Pure macOS Objective-C app that scans for `MacBLE-Demo`, connects to service `FF
 - `readValueForCharacteristic`
 - `writeValue:forCharacteristic:type:`
 - `setNotifyValue` and notification callbacks
+- Session token capture from JSON `paired` responses
+- Multi-event correlation: subscribe/write/read/reply/event logs
 
 ## Sources
 
@@ -34,4 +37,5 @@ Pure macOS Objective-C app that scans for `MacBLE-Demo`, connects to service `FF
 - Peripheral name: `MacBLE-Demo`
 - Service: `0000FFF0-0000-1000-8000-00805F9B34FB`
 - Characteristic: `0000FFF1-0000-1000-8000-00805F9B34FB`
-- Echo rule: write any payload, receive `00 AA` + original payload by notify or read
+- Protocol rule: Pair with `135790`, then include token for `echo`, `telemetry`, and `command`
+- Raw rule: write any non-protocol payload, receive `00 AA` + original payload by notify or read
