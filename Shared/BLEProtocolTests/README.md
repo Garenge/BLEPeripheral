@@ -1,0 +1,19 @@
+# BLEProtocol Smoke Tests
+
+Lightweight Objective-C CLI smoke tests for the shared BLE JSON protocol.
+
+## Run
+
+```bash
+Shared/BLEProtocolTests/run_ble_protocol_smoke.sh
+```
+
+The script compiles the shared protocol sources with `clang` and writes the temporary binary under `${TMPDIR:-/tmp}/ble_protocol_smoke`.
+
+## Coverage
+
+- `pair` succeeds with the default demo code and returns a token.
+- Protected `echo` rejects missing tokens.
+- Protected `echo` succeeds with a matching token.
+- `command resetCounters` returns command metadata.
+- `command` without `body.name` returns `invalid_body` and does not mark a side effect.

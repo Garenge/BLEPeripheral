@@ -1,0 +1,125 @@
+#import <Foundation/Foundation.h>
+#import "../BLEProtocol/BLEProtocolConstants.h"
+#import "../BLEProtocol/BLEProtocolHandler.h"
+#import "../BLEProtocol/BLEProtocolMessage.h"
+
+static NSString * const kPeripheralName = @"MacBLE-Demo";
+static NSString * const kServiceUUID = @"0000FFF0-0000-1000-8000-00805F9B34FB";
+static NSString * const kCharacteristicUUID = @"0000FFF1-0000-1000-8000-00805F9B34FB";
+static NSString * const kSessionID = @"test-session";
+
+static NSUInteger gFailureCount = 0;
+
+static void AssertTrue(BOOL condition, NSString *message) {
+    if (condition) {
+        NSLog(@"PASS %@", message);
+    } else {
+        gFailureCount += 1;
+        NSLog(@"FAIL %@", message);
+    }
+}
+
+static NSData *DataForRequest(NSString *operation, NSString *messageID, NSString *token, NSDictionary *body) {
+    NSDictionary *request = [BLEProtocolMessage requestWithOperation:operation
+                                                           messageID:messageID
+                                                               token:token
+                                                                body:body ?: @{}];
+    NSError *error = nil;
+    NSData *data = [BLEProtocolMessage dataFromDictionary:request error:&error];
+    AssertTrue(data != nil, [NSString stringWithFormat:@"encode request %@", operation]);
+    return data ?: NSData.data;
+}
+
+static NSDictionary *EnvelopeFromData(NSData *data) {
+    NSError *error = nil;
+    NSDictionary *envelope = [BLEProtocolMessage dictionaryFromData:data error:&error];
+    AssertTrue(envelope != nil, @"decode response envelope");
+    return envelope ?: @{};
+}
+
+static BLEProtocolHandlerResult *HandleRequest(NSData *requestData, NSString *currentToken, NSUInteger reads, NSUInteger writes, NSUInteger notifies, NSUInteger events) {
+    return [BLEProtocolHandler responseForRequestData:requestData
+                                      peripheralName:kPeripheralName
+                                         serviceUUID:kServiceUUID
+                                  characteristicUUID:kCharacteristicUUID
+                                           sessionID:kSessionID
+                                            pairCode:BLEProtocolDefaultPairCode
+                                        currentToken:currentToken
+                                           readCount:reads
+                                          writeCount:writes
+                                         notifyCount:notifies
+                                          eventCount:events];
+}
+
+static void TestPairSuccess(void) {
+    NSData *request = DataForRequest(BLEProtocolOpPair, @"pair-1", nil, @{ @"code": BLEProtocolDefaultPairCode });
+    BLEProtocolHandlerResult *result = HandleRequest(request, nil, 0, 0, 0, 0);
+    NSDictionary *response = EnvelopeFromData(result.responseData);
+
+    AssertTrue(result.pairingSucceeded, @"pair succeeds with default code");
+    AssertTrue(result.sessionToken.length > 0, @"pair returns session token");
+    AssertTrue([response[BLEProtocolKeyOperation] isEqualToString:BLEProtocolOpPaired], @"pair response op is paired");
+    AssertTrue([response[BLEProtocolKeyToken] isEqualToString:result.sessionToken], @"pair response top-level token matches result");
+}
+
+static void TestProtectedOperationRequiresToken(void) {
+    NSData *request = DataForRequest(BLEProtocolOpEcho, @"echo-1", nil, @{ @"text": @"hello" });
+    BLEProtocolHandlerResult *result = HandleRequest(request, nil, 0, 0, 0, 0);
+    NSDictionary *response = EnvelopeFromData(result.responseData);
+
+    AssertTrue([response[BLEProtocolKeyOperation] isEqualToString:BLEProtocolOpError], @"echo without token returns error");
+    NSDictionary *error = response[BLEProtocolKeyError];
+    AssertTrue([error[@"code"] isEqualToString:BLEProtocolErrorUnauthorized], @"echo without token is unauthorized");
+}
+
+static void TestEchoWithToken(void) {
+    NSString *token = @"tok-test";
+    NSData *request = DataForRequest(BLEProtocolOpEcho, @"echo-2", token, @{ @"text": @"hello" });
+    BLEProtocolHandlerResult *result = HandleRequest(request, token, 0, 1, 0, 0);
+    NSDictionary *response = EnvelopeFromData(result.responseData);
+
+    AssertTrue([response[BLEProtocolKeyOperation] isEqualToString:BLEProtocolOpEcho], @"echo with token returns echo");
+    AssertTrue([response[BLEProtocolKeyToken] isEqualToString:token], @"echo response preserves token");
+    AssertTrue([response[BLEProtocolKeyBody][@"text"] isEqualToString:@"hello"], @"echo response body text matches");
+}
+
+static void TestCommandMetadata(void) {
+    NSString *token = @"tok-test";
+    NSData *request = DataForRequest(BLEProtocolOpCommand, @"cmd-1", token, @{ @"name": @"resetCounters" });
+    BLEProtocolHandlerResult *result = HandleRequest(request, token, 4, 5, 6, 7);
+    NSDictionary *response = EnvelopeFromData(result.responseData);
+
+    AssertTrue(result.commandAccepted, @"resetCounters command accepted");
+    AssertTrue(result.shouldResetCounters, @"resetCounters marks counter reset");
+    AssertTrue([result.commandName isEqualToString:@"resetCounters"], @"command name captured");
+    AssertTrue([response[BLEProtocolKeyBody][@"effect"] isEqualToString:@"reset session counters"], @"command effect documented in body");
+}
+
+static void TestCommandMissingName(void) {
+    NSString *token = @"tok-test";
+    NSData *request = DataForRequest(BLEProtocolOpCommand, @"cmd-2", token, @{});
+    BLEProtocolHandlerResult *result = HandleRequest(request, token, 0, 0, 0, 0);
+    NSDictionary *response = EnvelopeFromData(result.responseData);
+
+    AssertTrue(!result.commandAccepted, @"missing command name not accepted");
+    AssertTrue(!result.shouldResetCounters, @"missing command name does not reset counters");
+    AssertTrue([response[BLEProtocolKeyOperation] isEqualToString:BLEProtocolOpError], @"missing command name returns error");
+    AssertTrue([response[BLEProtocolKeyError][@"code"] isEqualToString:BLEProtocolErrorInvalidBody], @"missing command name is invalid_body");
+}
+
+int main(int argc, const char * argv[]) {
+    @autoreleasepool {
+        NSLog(@"BLEProtocol smoke tests starting");
+        TestPairSuccess();
+        TestProtectedOperationRequiresToken();
+        TestEchoWithToken();
+        TestCommandMetadata();
+        TestCommandMissingName();
+        if (gFailureCount > 0) {
+            NSLog(@"BLEProtocol smoke tests failed: %lu", (unsigned long)gFailureCount);
+            return 1;
+        }
+        NSLog(@"BLEProtocol smoke tests passed");
+        return 0;
+    }
+}

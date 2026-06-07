@@ -9,7 +9,8 @@ BLEPeripheral/                 # repo root
 ├── README.md                  # this file
 ├── ble_protocol.md            # JSON protocol v1
 ├── Shared/
-│   └── BLEProtocol/           # shared Objective-C sources
+│   ├── BLEProtocol/           # shared Objective-C sources
+│   └── BLEProtocolTests/      # lightweight protocol smoke tests
 ├── MacPeripheralOC/
 │   ├── BLEPeripheral.xcodeproj
 │   └── BLEPeripheral/         # macOS Objective-C Peripheral app sources
@@ -101,6 +102,9 @@ xcodebuild -project MacCentralOC/MacCentralOC.xcodeproj -scheme MacCentralOC -co
 # Flutter macOS Central
 cd FlutterCentral && flutter analyze && flutter test && flutter build macos --debug
 
+# Shared Objective-C BLE protocol smoke tests
+Shared/BLEProtocolTests/run_ble_protocol_smoke.sh
+
 # iOS Objective-C Central
 xcodebuild -project iOSCentralOC/BLECentral.xcodeproj -scheme BLECentral -configuration Debug -sdk iphoneos build
 ```
@@ -117,6 +121,7 @@ xcodebuild -project iOSCentralOC/BLECentral.xcodeproj -scheme BLECentral -config
 - [MacCentralOC/README.md](MacCentralOC/README.md) — macOS Objective-C central notes
 - [FlutterCentral/README.md](FlutterCentral/README.md) — Flutter macOS central notes
 - [iOSCentralOC/README.md](iOSCentralOC/README.md) — iPhone Objective-C central notes
+- [Shared/BLEProtocolTests/README.md](Shared/BLEProtocolTests/README.md) — Objective-C protocol smoke tests
 
 ## Learning Path
 
