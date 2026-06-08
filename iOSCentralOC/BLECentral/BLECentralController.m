@@ -6,6 +6,10 @@ static NSString * const kTargetPeripheralName = @"MacBLE-Demo";
 static NSString * const kServiceUUIDString = @"0000FFF0-0000-1000-8000-00805F9B34FB";
 static NSString * const kCharacteristicUUIDString = @"0000FFF1-0000-1000-8000-00805F9B34FB";
 static NSString * const kEventRuleModeNormal = @"normal";
+static NSTimeInterval const kDemoFlowStepDelay = 0.35;
+static NSUInteger const kMaxChunkStreams = 8;
+static NSUInteger const kMaxChunkPartsPerStream = 256;
+static NSUInteger const kMaxChunkBufferedBytes = 64 * 1024;
 
 @interface BLEDiscoveredDeviceRecord : NSObject
 
@@ -30,6 +34,10 @@ static NSString * const kEventRuleModeNormal = @"normal";
 @property (nonatomic, copy) NSString *eventRuleMode;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSMutableDictionary<NSNumber *, NSData *> *> *chunkBuffers;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *chunkCounts;
+@property (nonatomic, strong) NSMutableArray<NSString *> *chunkStreamOrder;
+@property (nonatomic) NSUInteger chunkBufferedBytes;
+@property (nonatomic, getter=isDemoFlowRunning) BOOL demoFlowRunning;
+@property (nonatomic) NSUInteger demoFlowGeneration;
 @property (nonatomic) BOOL scanning;
 @property (nonatomic) BOOL connected;
 @property (nonatomic) BOOL notifying;
@@ -47,6 +55,7 @@ static NSString * const kEventRuleModeNormal = @"normal";
         _eventRuleMode = kEventRuleModeNormal;
         _chunkBuffers = [NSMutableDictionary dictionary];
         _chunkCounts = [NSMutableDictionary dictionary];
+        _chunkStreamOrder = [NSMutableArray array];
         _centralManager = [[CBCentralManager alloc] initWithDelegate:self queue:nil];
     }
     return self;
@@ -72,6 +81,10 @@ static NSString * const kEventRuleModeNormal = @"normal";
     return self.notifying;
 }
 
+- (BOOL)isCharacteristicReady {
+    return self.demoCharacteristic != nil;
+}
+
 - (void)startScan {
     if (self.centralManager.state != CBManagerStatePoweredOn) {
         [self log:@"Cannot scan: Bluetooth is not powered on."];
@@ -80,20 +93,24 @@ static NSString * const kEventRuleModeNormal = @"normal";
 
     [self.mutableDiscoveredDevices removeAllObjects];
     [self.discoveredRecords removeAllObjects];
+    [self notifyStateChanged];
 
     CBUUID *serviceUUID = [CBUUID UUIDWithString:kServiceUUIDString];
     [self.centralManager scanForPeripheralsWithServices:@[serviceUUID] options:@{ CBCentralManagerScanOptionAllowDuplicatesKey: @YES }];
     self.scanning = YES;
     [self log:@"Scanning for service FFF0..."];
+    [self notifyStateChanged];
 }
 
 - (void)stopScan {
     [self.centralManager stopScan];
     self.scanning = NO;
     [self log:@"Scan stopped."];
+    [self notifyStateChanged];
 }
 
 - (void)connectPeripheral:(CBPeripheral *)peripheral {
+    [self cancelDemoFlowWithReason:@"new connection requested"];
     if (self.connectedPeripheral) {
         [self disconnect];
     }
@@ -102,6 +119,7 @@ static NSString * const kEventRuleModeNormal = @"normal";
     peripheral.delegate = self;
     [self.centralManager connectPeripheral:peripheral options:nil];
     [self log:[NSString stringWithFormat:@"Connecting to %@...", peripheral.name ?: peripheral.identifier.UUIDString]];
+    [self notifyStateChanged];
 }
 
 - (NSString *)detailForDiscoveredPeripheralAtIndex:(NSUInteger)index {
@@ -123,6 +141,7 @@ static NSString * const kEventRuleModeNormal = @"normal";
     if (!self.connectedPeripheral) {
         return;
     }
+    [self cancelDemoFlowWithReason:@"disconnect requested"];
     [self.centralManager cancelPeripheralConnection:self.connectedPeripheral];
 }
 
@@ -182,6 +201,80 @@ static NSString * const kEventRuleModeNormal = @"normal";
     [self writeData:data label:@"legacy"];
 }
 
+- (void)runDemoFlow {
+    if (!self.demoCharacteristic || !self.connectedPeripheral) {
+        [self log:@"FLOW demo flow skipped: characteristic missing."];
+        return;
+    }
+    if (self.isDemoFlowRunning) {
+        [self log:@"FLOW demo flow skipped: already running."];
+        return;
+    }
+    self.demoFlowRunning = YES;
+    self.demoFlowGeneration += 1;
+    NSUInteger generation = self.demoFlowGeneration;
+    [self notifyStateChanged];
+    [self log:@"FLOW demo flow started: pair/info/ping/echo/telemetry/rules/commands/raw/read"];
+    [self runDemoFlowSteps:[self demoFlowSteps] index:0 generation:generation];
+}
+
+- (NSArray *)demoFlowSteps {
+    return @[
+        [^{ [self subscribeNotifications:YES]; } copy],
+        [^{ [self sendProtocolPairCode:BLEProtocolDefaultPairCode]; } copy],
+        [^{ [self sendProtocolGetInfo]; } copy],
+        [^{ [self sendProtocolPing]; } copy],
+        [^{ [self sendProtocolEcho:[self demoFlowLongEchoText]]; } copy],
+        [^{ [self sendProtocolTelemetry]; } copy],
+        [^{ [self sendProtocolEventRuleMode:@"burst"]; } copy],
+        [^{ [self sendProtocolCommand:@"sample"]; } copy],
+        [^{ [self sendProtocolEventRuleMode:@"normal"]; } copy],
+        [^{ [self sendProtocolCommand:@"identify"]; } copy],
+        [^{ [self sendLegacyText:@"demo raw legacy payload"]; } copy],
+        [^{ [self readCharacteristic]; } copy],
+    ];
+}
+
+- (void)runDemoFlowSteps:(NSArray *)steps index:(NSUInteger)index generation:(NSUInteger)generation {
+    if (![self isCurrentDemoFlowGeneration:generation]) {
+        return;
+    }
+    if (index >= steps.count) {
+        [self log:@"FLOW demo flow queued."];
+        self.demoFlowRunning = NO;
+        [self notifyStateChanged];
+        return;
+    }
+    void (^step)(void) = steps[index];
+    step();
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kDemoFlowStepDelay * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        [self runDemoFlowSteps:steps index:index + 1 generation:generation];
+    });
+}
+
+- (NSString *)demoFlowLongEchoText {
+    return @"demo-flow long echo payload: pair info ping telemetry rule burst sample identify raw read; "
+           "this string is intentionally long enough to exercise notify queue and chunk reassembly across clients.";
+}
+
+- (BOOL)isCurrentDemoFlowGeneration:(NSUInteger)generation {
+    return self.isDemoFlowRunning &&
+           self.demoFlowGeneration == generation &&
+           self.demoCharacteristic != nil &&
+           self.connectedPeripheral != nil;
+}
+
+- (void)cancelDemoFlowWithReason:(NSString *)reason {
+    self.demoFlowGeneration += 1;
+    if (!self.isDemoFlowRunning) {
+        return;
+    }
+    self.demoFlowRunning = NO;
+    [self log:[NSString stringWithFormat:@"FLOW demo flow cancelled: %@", reason]];
+    [self notifyStateChanged];
+}
+
 - (void)sendProtocolOperation:(NSString *)operation body:(NSDictionary *)body includeToken:(BOOL)includeToken {
     self.protocolSequence += 1;
     NSString *messageID = [NSString stringWithFormat:@"ios-%lu", (unsigned long)self.protocolSequence];
@@ -222,14 +315,15 @@ static NSString * const kEventRuleModeNormal = @"normal";
 }
 
 - (void)resetConnectionState {
+    [self cancelDemoFlowWithReason:@"connection cleared"];
     self.connectedPeripheral = nil;
     self.demoCharacteristic = nil;
     self.connected = NO;
     self.notifying = NO;
     self.sessionToken = nil;
     self.eventRuleMode = kEventRuleModeNormal;
-    [self.chunkBuffers removeAllObjects];
-    [self.chunkCounts removeAllObjects];
+    [self clearChunkBuffers];
+    [self notifyStateChanged];
 }
 
 #pragma mark - CBCentralManagerDelegate
@@ -252,6 +346,7 @@ static NSString * const kEventRuleModeNormal = @"normal";
             [self log:@"Bluetooth state changed."];
             break;
     }
+    [self notifyStateChanged];
 }
 
 - (void)centralManager:(CBCentralManager *)central didDiscoverPeripheral:(CBPeripheral *)peripheral advertisementData:(NSDictionary<NSString *,id> *)advertisementData RSSI:(NSNumber *)RSSI {
@@ -284,6 +379,7 @@ static NSString * const kEventRuleModeNormal = @"normal";
     self.connected = YES;
     [self log:[NSString stringWithFormat:@"Connected: %@", peripheral.name ?: peripheral.identifier.UUIDString]];
     [peripheral discoverServices:@[[CBUUID UUIDWithString:kServiceUUIDString]]];
+    [self notifyStateChanged];
 }
 
 - (void)centralManager:(CBCentralManager *)central didFailToConnectPeripheral:(CBPeripheral *)peripheral error:(NSError *)error {
@@ -330,6 +426,7 @@ static NSString * const kEventRuleModeNormal = @"normal";
             self.demoCharacteristic = characteristic;
             [self log:[NSString stringWithFormat:@"Characteristic ready: %@ props=0x%lx", characteristic.UUID.UUIDString, (unsigned long)characteristic.properties]];
             [self log:@"Auto: subscribe Notify, read current value, then pair with demo code."];
+            [self notifyStateChanged];
             [self subscribeNotifications:YES];
             return;
         }
@@ -406,19 +503,45 @@ static NSString * const kEventRuleModeNormal = @"normal";
                                    index:(NSUInteger)index
                                    count:(NSUInteger)count
                                    label:(NSString *)label {
+    if (count > kMaxChunkPartsPerStream) {
+        [self log:[NSString stringWithFormat:@"%@ chunk dropped: stream=%@ reason=part-count-limit count=%lu",
+                   label,
+                   streamID,
+                   (unsigned long)count]];
+        return nil;
+    }
+
     NSMutableDictionary<NSNumber *, NSData *> *chunks = self.chunkBuffers[streamID];
     NSNumber *expectedCount = self.chunkCounts[streamID];
     if (expectedCount && expectedCount.unsignedIntegerValue != count) {
-        [self.chunkBuffers removeObjectForKey:streamID];
-        [self.chunkCounts removeObjectForKey:streamID];
+        [self dropChunkStream:streamID];
+        [self log:[NSString stringWithFormat:@"%@ chunk cache trimmed: stream=%@ reason=count-changed",
+                   label,
+                   streamID]];
         chunks = nil;
     }
     if (!chunks) {
+        [self trimChunkStreamsForIncomingStream:streamID label:label];
         chunks = [NSMutableDictionary dictionary];
         self.chunkBuffers[streamID] = chunks;
         self.chunkCounts[streamID] = @(count);
+        [self.chunkStreamOrder addObject:streamID];
+    }
+
+    NSData *previousPayload = chunks[@(index)];
+    NSUInteger previousLength = previousPayload.length;
+    NSUInteger nextBufferedBytes = self.chunkBufferedBytes - previousLength + payload.length;
+    if (nextBufferedBytes > kMaxChunkBufferedBytes) {
+        [self dropChunkStream:streamID];
+        [self log:[NSString stringWithFormat:@"%@ chunk dropped: stream=%@ reason=byte-limit bytes=%lu buffered=%lu",
+                   label,
+                   streamID,
+                   (unsigned long)payload.length,
+                   (unsigned long)self.chunkBufferedBytes]];
+        return nil;
     }
     chunks[@(index)] = payload;
+    self.chunkBufferedBytes = nextBufferedBytes;
     [self log:[NSString stringWithFormat:@"%@ chunk: stream=%@ part=%lu/%lu bytes=%lu",
                label,
                streamID,
@@ -441,20 +564,48 @@ static NSString * const kEventRuleModeNormal = @"normal";
         }
         [complete appendData:part];
     }
-    [self.chunkBuffers removeObjectForKey:streamID];
-    [self.chunkCounts removeObjectForKey:streamID];
+    [self dropChunkStream:streamID];
     [self log:[NSString stringWithFormat:@"chunk complete: stream=%@ bytes=%lu",
                streamID,
                (unsigned long)complete.length]];
     return complete.copy;
 }
 
-- (void)captureSessionTokenFromMessage:(NSDictionary *)message {
-    NSString *token = [message[BLEProtocolKeyToken] isKindOfClass:[NSString class]] ? message[BLEProtocolKeyToken] : nil;
-    if (token.length == 0 &&
-        [message[BLEProtocolKeyBody] isKindOfClass:[NSDictionary class]]) {
-        token = message[BLEProtocolKeyBody][BLEProtocolKeyToken];
+- (void)trimChunkStreamsForIncomingStream:(NSString *)streamID label:(NSString *)label {
+    if (self.chunkBuffers[streamID] || self.chunkStreamOrder.count < kMaxChunkStreams) {
+        return;
     }
+    NSString *droppedStream = self.chunkStreamOrder.firstObject;
+    [self dropChunkStream:droppedStream];
+    [self log:[NSString stringWithFormat:@"%@ chunk cache trimmed: stream=%@ reason=stream-limit",
+               label,
+               droppedStream]];
+}
+
+- (void)dropChunkStream:(NSString *)streamID {
+    NSMutableDictionary<NSNumber *, NSData *> *chunks = self.chunkBuffers[streamID];
+    [self.chunkBuffers removeObjectForKey:streamID];
+    [self.chunkCounts removeObjectForKey:streamID];
+    [self.chunkStreamOrder removeObject:streamID];
+    if (!chunks) {
+        return;
+    }
+    NSUInteger droppedBytes = 0;
+    for (NSData *part in chunks.allValues) {
+        droppedBytes += part.length;
+    }
+    self.chunkBufferedBytes = droppedBytes > self.chunkBufferedBytes ? 0 : self.chunkBufferedBytes - droppedBytes;
+}
+
+- (void)clearChunkBuffers {
+    [self.chunkBuffers removeAllObjects];
+    [self.chunkCounts removeAllObjects];
+    [self.chunkStreamOrder removeAllObjects];
+    self.chunkBufferedBytes = 0;
+}
+
+- (void)captureSessionTokenFromMessage:(NSDictionary *)message {
+    NSString *token = [BLEProtocolMessage tokenFromEnvelope:message];
     if (token.length > 0 && ![token isEqualToString:self.sessionToken]) {
         self.sessionToken = token;
         [self log:[NSString stringWithFormat:@"AUTH token captured: %@", token]];
@@ -484,6 +635,7 @@ static NSString * const kEventRuleModeNormal = @"normal";
     }
     self.eventRuleMode = mode;
     [self log:[NSString stringWithFormat:@"RULE mode=%@", mode]];
+    [self notifyStateChanged];
 }
 
 - (void)updateDiscoveredRecord:(BLEDiscoveredDeviceRecord *)record
@@ -538,6 +690,13 @@ static NSString * const kEventRuleModeNormal = @"normal";
         [self sendProtocolGetInfo];
     } else {
         [self log:@"Notifications disabled."];
+    }
+    [self notifyStateChanged];
+}
+
+- (void)notifyStateChanged {
+    if (self.stateHandler) {
+        self.stateHandler();
     }
 }
 

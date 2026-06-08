@@ -19,6 +19,7 @@
 @property (nonatomic, strong) NSButton *commandButton;
 @property (nonatomic, strong) NSTextField *ruleModeLabel;
 @property (nonatomic, strong) NSSegmentedControl *ruleModeControl;
+@property (nonatomic, strong) NSButton *demoFlowButton;
 @property (nonatomic, strong) NSButton *rawButton;
 @property (nonatomic, strong) NSButton *notifyButton;
 @property (nonatomic, strong) NSTextView *logTextView;
@@ -185,9 +186,11 @@
                                                                     target:self
                                                                     action:@selector(ruleModeChanged:)];
     self.ruleModeControl.translatesAutoresizingMaskIntoConstraints = NO;
+    self.demoFlowButton = [self buttonWithTitle:@"Run Demo" action:@selector(demoFlowTapped:)];
     NSStackView *stack = [NSStackView stackViewWithViews:@[
         self.ruleModeLabel,
         self.ruleModeControl,
+        self.demoFlowButton,
     ]];
     [self configureStack:stack];
     return stack;
@@ -305,6 +308,10 @@
     [self.centralController setNotifyEnabled:!self.centralController.isNotifyEnabled];
 }
 
+- (void)demoFlowTapped:(id)sender {
+    [self.centralController runDemoFlow];
+}
+
 - (nullable NSString *)eventRuleModeFromCommandText:(NSString *)text {
     NSString *prefix = @"rule:";
     if (![text hasPrefix:prefix]) {
@@ -342,6 +349,8 @@
         self.ruleModeLabel.stringValue = [NSString stringWithFormat:@"Rule mode: %@", self.centralController.eventRuleMode];
         self.ruleModeControl.enabled = self.centralController.isCharacteristicReady;
         self.ruleModeControl.selectedSegment = [self selectedRuleModeSegment];
+        self.demoFlowButton.enabled = self.centralController.isCharacteristicReady && !self.centralController.isDemoFlowRunning;
+        self.demoFlowButton.title = self.centralController.isDemoFlowRunning ? @"Running Demo" : @"Run Demo";
         self.rawButton.enabled = self.centralController.isCharacteristicReady;
         self.notifyButton.enabled = self.centralController.isCharacteristicReady;
         self.notifyButton.title = self.centralController.isNotifyEnabled ? @"Notify Off" : @"Notify On";

@@ -278,6 +278,21 @@ class _BleCentralPageState extends State<BleCentralPage> {
                                 : 'Notify On',
                           ),
                         ),
+                        FilledButton.icon(
+                          onPressed: _controller.canRunDemoFlow
+                              ? _controller.runDemoFlow
+                              : null,
+                          icon: Icon(
+                            _controller.isDemoFlowRunning
+                                ? Icons.hourglass_top
+                                : Icons.play_arrow,
+                          ),
+                          label: Text(
+                            _controller.isDemoFlowRunning
+                                ? 'Running Demo'
+                                : 'Run Demo',
+                          ),
+                        ),
                       ],
                     ),
                     const Divider(height: 28),

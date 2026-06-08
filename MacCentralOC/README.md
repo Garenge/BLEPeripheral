@@ -13,8 +13,9 @@ Pure macOS Objective-C app that scans for `MacBLE-Demo`, connects to service `FF
 3. Allow Bluetooth permission.
 4. Click **Scan**, select `MacBLE-Demo`, click **Connect**.
 5. The app auto-enables Notify, sends Pair code `135790`, then requests `getInfo` capability discovery.
-6. Use **Pair**, **Ping**, **Info**, **Echo**, **Telemetry**, **Command**, the event-rule segmented control, **Raw**, **Read**, and **Notify On/Off** to observe the GATT lifecycle.
-7. You can also type `rule:quiet`, `rule:burst`, or `rule:normal` in the payload field and click **Command** to switch event association rules.
+6. Use **Run Demo** to queue Notify On, Pair, Info, Ping, long Echo, Telemetry, Burst/Normal rules, Sample/Identify commands, Raw, and Read. It runs one guarded flow at a time and cancels queued steps on disconnect.
+7. Use **Pair**, **Ping**, **Info**, **Echo**, **Telemetry**, **Command**, the event-rule segmented control, **Raw**, **Read**, and **Notify On/Off** to observe individual GATT operations.
+8. You can also type `rule:quiet`, `rule:burst`, or `rule:normal` in the payload field and click **Command** to switch event association rules.
 
 ## What This Project Teaches
 
@@ -30,6 +31,7 @@ Pure macOS Objective-C app that scans for `MacBLE-Demo`, connects to service `FF
 - Capability discovery from JSON `info` responses
 - Event rule mode display and switching through `command setEventRule`
 - MTU chunk reassembly for oversized notify replies/events
+- One-click demo flow for comparing Pair/Info/Ping/Echo/Telemetry/Rule/Command/Raw/Read behavior
 - Multi-event correlation: subscribe/write/read/reply/event logs
 
 ## Sources
@@ -45,5 +47,5 @@ Pure macOS Objective-C app that scans for `MacBLE-Demo`, connects to service `FF
 - Protocol rule: Pair with `135790`, then include token for `echo`, `telemetry`, and `command`
 - Capability rule: `getInfo` is open and returns supported operations, commands, event rules, security, and transport hints
 - Event rule: `setEventRule` switches `normal`, `quiet`, or `burst` per Central session
-- Chunk rule: oversized Notify payloads arrive as `op=chunk`; the app logs progress, reassembles, then parses the original message
+- Chunk rule: oversized Notify payloads arrive as `op=chunk`; the app logs progress, caps incomplete reassembly to 8 streams / 256 parts per stream / 64 KiB total, reassembles, then parses the original message
 - Raw rule: write any non-protocol payload, receive `00 AA` + original payload by notify or read

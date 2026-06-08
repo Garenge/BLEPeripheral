@@ -4,9 +4,16 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
+import 'ble_chunk_reassembler.dart';
 import 'ble_protocol_codec.dart';
 
 const String demoPeripheralName = 'MacBLE-Demo';
+const Duration _demoFlowStepDelay = Duration(milliseconds: 350);
+const String _demoFlowLongEchoText =
+    'demo-flow long echo payload: pair info ping telemetry rule burst sample '
+    'identify raw read; this string is intentionally long enough to exercise '
+    'notify queue and chunk reassembly across clients. Flutter keeps the same '
+    'flow as the Objective-C clients so the peripheral can compare sessions.';
 final Guid demoServiceUuid = Guid('0000FFF0-0000-1000-8000-00805F9B34FB');
 final Guid demoCharacteristicUuid = Guid(
   '0000FFF1-0000-1000-8000-00805F9B34FB',
@@ -61,17 +68,19 @@ class BleCentralController extends ChangeNotifier {
 
   final List<StreamSubscription<dynamic>> _subscriptions = [];
   final BleProtocolCodec _protocolCodec = const BleProtocolCodec();
+  final BleChunkReassembler _chunkReassembler = BleChunkReassembler();
   final Map<String, DiscoveredBleDevice> _devicesById = {};
-  final Map<String, Map<int, List<int>>> _chunkBuffers = {};
-  final Map<String, int> _chunkCounts = {};
   final List<String> logs = [];
+  StreamSubscription<List<int>>? _valueSubscription;
 
   BluetoothAdapterState _adapterState = FlutterBluePlus.adapterStateNow;
   BluetoothDevice? connectedDevice;
   BluetoothCharacteristic? demoCharacteristic;
   bool isScanning = false;
   bool notifyEnabled = false;
+  bool isDemoFlowRunning = false;
   int _protocolSequence = 0;
+  int _demoFlowGeneration = 0;
   String? sessionToken;
   String? capabilitySummary;
   String eventRuleMode = 'normal';
@@ -83,6 +92,12 @@ class BleCentralController extends ChangeNotifier {
   }
 
   String get adapterLabel => 'Bluetooth: ${_adapterState.name}';
+
+  bool get canRunDemoFlow {
+    return demoCharacteristic != null &&
+        connectedDevice != null &&
+        !isDemoFlowRunning;
+  }
 
   String get connectionLabel {
     final device = connectedDevice;
@@ -201,6 +216,37 @@ class BleCentralController extends ChangeNotifier {
     _log('TX raw write: ${payload.length} B text="$text"');
   }
 
+  Future<void> runDemoFlow() async {
+    if (demoCharacteristic == null || connectedDevice == null) {
+      _log('FLOW demo flow skipped: characteristic missing');
+      return;
+    }
+    if (isDemoFlowRunning) {
+      _log('FLOW demo flow skipped: already running');
+      return;
+    }
+    isDemoFlowRunning = true;
+    final generation = ++_demoFlowGeneration;
+    _log(
+      'FLOW demo flow started: pair/info/ping/echo/telemetry/rules/commands/raw/read',
+    );
+    try {
+      await _runDemoFlowSteps(generation);
+      if (_isCurrentDemoFlow(generation)) {
+        _log('FLOW demo flow queued');
+      }
+    } catch (error) {
+      if (_isCurrentDemoFlow(generation)) {
+        _log('FLOW demo flow failed: $error');
+      }
+    } finally {
+      if (_isCurrentDemoFlow(generation)) {
+        isDemoFlowRunning = false;
+        notifyListeners();
+      }
+    }
+  }
+
   Future<void> _sendProtocol(
     String operation,
     Map<String, Object?> body, {
@@ -236,8 +282,56 @@ class BleCentralController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> _demoDelay() {
+    return Future<void>.delayed(_demoFlowStepDelay);
+  }
+
+  Future<void> _runDemoFlowSteps(int generation) async {
+    final steps = <Future<void> Function()>[
+      () => setNotify(true),
+      () => sendPairCode(bleDefaultPairCode),
+      sendInfo,
+      sendPing,
+      () => sendEcho(_demoFlowLongEchoText),
+      sendTelemetry,
+      () => sendEventRuleMode('burst'),
+      () => sendCommand('sample'),
+      () => sendEventRuleMode('normal'),
+      () => sendCommand('identify'),
+      () => sendRawText('demo raw legacy payload'),
+      readValue,
+    ];
+    for (var index = 0; index < steps.length; index += 1) {
+      if (!_isCurrentDemoFlow(generation)) {
+        return;
+      }
+      await steps[index]();
+      if (index < steps.length - 1) {
+        await _demoDelay();
+      }
+    }
+  }
+
+  bool _isCurrentDemoFlow(int generation) {
+    return isDemoFlowRunning &&
+        _demoFlowGeneration == generation &&
+        demoCharacteristic != null &&
+        connectedDevice != null;
+  }
+
+  void _cancelDemoFlow(String reason) {
+    _demoFlowGeneration += 1;
+    if (!isDemoFlowRunning) {
+      return;
+    }
+    isDemoFlowRunning = false;
+    _log('FLOW demo flow cancelled: $reason');
+  }
+
   @override
   void dispose() {
+    _cancelDemoFlow('controller disposed');
+    _cancelValueSubscription();
     for (final subscription in _subscriptions) {
       subscription.cancel();
     }
@@ -309,11 +403,10 @@ class BleCentralController extends ChangeNotifier {
     }
     demoCharacteristic = characteristic;
     _log('GATT characteristic ready: ${characteristic.uuid.str}');
-    _subscriptions.add(
-      characteristic.onValueReceived.listen((value) {
-        _logIncoming(value, 'RX notify/read');
-      }),
-    );
+    _cancelValueSubscription();
+    _valueSubscription = characteristic.onValueReceived.listen((value) {
+      _logIncoming(value, 'RX notify/read');
+    });
     await setNotify(true);
     await readValue();
     await sendPairCode(bleDefaultPairCode);
@@ -322,15 +415,22 @@ class BleCentralController extends ChangeNotifier {
   }
 
   void _clearGattState() {
+    _cancelDemoFlow('connection cleared');
     connectedDevice = null;
     demoCharacteristic = null;
     notifyEnabled = false;
     sessionToken = null;
     capabilitySummary = null;
     eventRuleMode = 'normal';
-    _chunkBuffers.clear();
-    _chunkCounts.clear();
+    _cancelValueSubscription();
+    _chunkReassembler.clear();
     notifyListeners();
+  }
+
+  void _cancelValueSubscription() {
+    final subscription = _valueSubscription;
+    _valueSubscription = null;
+    unawaited(subscription?.cancel());
   }
 
   void _logIncoming(List<int> value, String label) {
@@ -377,40 +477,27 @@ class BleCentralController extends ChangeNotifier {
   }
 
   List<int>? _captureChunk(BleChunkFragment chunk, String label) {
-    final expectedCount = _chunkCounts[chunk.stream];
-    if (expectedCount != null && expectedCount != chunk.count) {
-      _chunkBuffers.remove(chunk.stream);
-      _chunkCounts.remove(chunk.stream);
+    final result = _chunkReassembler.capture(chunk);
+    if (result.trimmedStream != null) {
+      _log(
+        '$label chunk cache trimmed: stream=${result.trimmedStream} reason=${result.trimReason}',
+      );
     }
-    final parts = _chunkBuffers.putIfAbsent(chunk.stream, () => {});
-    _chunkCounts[chunk.stream] = chunk.count;
-    parts[chunk.index] = chunk.bytes;
+    if (!result.accepted) {
+      _log(
+        '$label chunk dropped: stream=${chunk.stream} reason=${result.rejectReason}',
+      );
+      return null;
+    }
     _log(
       '$label chunk: stream=${chunk.stream} part=${chunk.index + 1}/${chunk.count} bytes=${chunk.bytes.length}',
     );
-    if (parts.length < chunk.count) {
-      return null;
+    if (result.complete != null) {
+      _log(
+        'RX chunk complete: stream=${chunk.stream} bytes=${result.complete!.length}',
+      );
     }
-    return _reassembledChunkData(chunk.stream, chunk.count);
-  }
-
-  List<int>? _reassembledChunkData(String stream, int count) {
-    final parts = _chunkBuffers[stream];
-    if (parts == null) {
-      return null;
-    }
-    final complete = <int>[];
-    for (var index = 0; index < count; index += 1) {
-      final part = parts[index];
-      if (part == null) {
-        return null;
-      }
-      complete.addAll(part);
-    }
-    _chunkBuffers.remove(stream);
-    _chunkCounts.remove(stream);
-    _log('RX chunk complete: stream=$stream bytes=${complete.length}');
-    return complete;
+    return result.complete;
   }
 
   void _captureSessionToken(String? token) {

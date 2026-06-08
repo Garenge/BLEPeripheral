@@ -9,6 +9,7 @@
 @property (nonatomic, strong) UITextField *pairCodeField;
 @property (nonatomic, strong) UILabel *statusLabel;
 @property (nonatomic, strong) UISegmentedControl *ruleModeControl;
+@property (nonatomic, strong) UIButton *demoFlowButton;
 
 @end
 
@@ -29,6 +30,11 @@
     [self buildUI];
     __weak typeof(self) weakSelf = self;
     self.centralController.discoveryHandler = ^{
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [weakSelf refreshStatus];
+        });
+    };
+    self.centralController.stateHandler = ^{
         dispatch_async(dispatch_get_main_queue(), ^{
             [weakSelf refreshStatus];
         });
@@ -65,11 +71,13 @@
     self.ruleModeControl = [[UISegmentedControl alloc] initWithItems:@[ @"Normal", @"Quiet", @"Burst" ]];
     self.ruleModeControl.translatesAutoresizingMaskIntoConstraints = NO;
     [self.ruleModeControl addTarget:self action:@selector(ruleModeChanged:) forControlEvents:UIControlEventValueChanged];
+    self.demoFlowButton = [self makeButton:@"Run Demo" action:@selector(demoFlowTapped)];
 
     UIStackView *dataButtons = [self buttonRow:@[
         [self makeButton:@"Read" action:@selector(readTapped)],
         [self makeButton:@"Notify On" action:@selector(notifyOnTapped)],
         [self makeButton:@"Notify Off" action:@selector(notifyOffTapped)],
+        self.demoFlowButton,
     ]];
 
     self.pairCodeField = [[UITextField alloc] init];
@@ -137,6 +145,8 @@
     UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
     [button setTitle:title forState:UIControlStateNormal];
     button.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
+    button.titleLabel.adjustsFontSizeToFitWidth = YES;
+    button.titleLabel.minimumScaleFactor = 0.8;
     [button addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
     return button;
 }
@@ -148,6 +158,10 @@
                               self.centralController.isNotifying ? @"YES" : @"NO",
                               self.centralController.eventRuleMode];
     self.ruleModeControl.selectedSegmentIndex = [self selectedRuleModeSegment];
+    self.ruleModeControl.enabled = self.centralController.isCharacteristicReady;
+    self.demoFlowButton.enabled = self.centralController.isCharacteristicReady && !self.centralController.isDemoFlowRunning;
+    NSString *demoTitle = self.centralController.isDemoFlowRunning ? @"Running Demo" : @"Run Demo";
+    [self.demoFlowButton setTitle:demoTitle forState:UIControlStateNormal];
     [self.tableView reloadData];
 }
 
@@ -230,6 +244,10 @@
 
 - (void)notifyOffTapped {
     [self.centralController subscribeNotifications:NO];
+}
+
+- (void)demoFlowTapped {
+    [self.centralController runDemoFlow];
 }
 
 - (nullable NSString *)eventRuleModeFromCommandText:(NSString *)text {

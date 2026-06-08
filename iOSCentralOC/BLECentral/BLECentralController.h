@@ -5,14 +5,18 @@ NS_ASSUME_NONNULL_BEGIN
 
 typedef void (^BLECentralLogHandler)(NSString *message);
 typedef void (^BLECentralDiscoveryHandler)(void);
+typedef void (^BLECentralStateHandler)(void);
 
 @interface BLECentralController : NSObject
 
 @property (nonatomic, copy, nullable) BLECentralDiscoveryHandler discoveryHandler;
+@property (nonatomic, copy, nullable) BLECentralStateHandler stateHandler;
 
 @property (nonatomic, readonly) BOOL isScanning;
 @property (nonatomic, readonly) BOOL isConnected;
 @property (nonatomic, readonly) BOOL isNotifying;
+@property (nonatomic, readonly) BOOL isCharacteristicReady;
+@property (nonatomic, readonly) BOOL isDemoFlowRunning;
 @property (nonatomic, readonly, copy) NSString *eventRuleMode;
 @property (nonatomic, readonly, copy) NSArray<CBPeripheral *> *discoveredPeripherals;
 
@@ -32,6 +36,7 @@ typedef void (^BLECentralDiscoveryHandler)(void);
 - (void)sendProtocolCommand:(NSString *)name;
 - (void)sendProtocolEventRuleMode:(NSString *)mode;
 - (void)sendLegacyText:(NSString *)text;
+- (void)runDemoFlow;
 
 @end
 

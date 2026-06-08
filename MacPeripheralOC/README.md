@@ -54,7 +54,7 @@ macOS app that advertises `MacBLE-Demo` and exposes one GATT service for iPhone 
 
 每条 `[RX]`/`[TX]` 含：`central` UUID、通道名、字节数、UTF-8 预览（非文本则 hex）。
 
-Notify 已改为 per-Central 队列：Notify 关闭或 CoreBluetooth back-pressure 时先入队，订阅/ready 后按中央端 MTU flush；长 payload 以 `op=chunk` 分片，first-party Central 会自动重组。
+Notify 已改为 per-Central 队列：Notify 关闭或 CoreBluetooth back-pressure 时先入队，订阅/ready 后按中央端 MTU flush；长 payload 以 `op=chunk` 分片，first-party Central 会自动重组。每个 Central 最多保留 256 个待发 notify packet，超过后丢弃最旧 packet 并记录 trim 日志，避免长时间调试时队列无限增长。
 
 **说明：** macOS `CBPeripheralManager` 不提供可靠的「Central 已断链」委托；iPhone 完全断开后通常不再有 read/write，但 Mac 端不一定收到 `[LINK-] disconnected`。取消 notify 会明确打 `[LINK-] notify OFF`。
 

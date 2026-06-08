@@ -3,6 +3,9 @@ import 'dart:convert';
 const int bleProtocolVersion = 1;
 const String bleDefaultPairCode = '135790';
 const String bleProtocolOpChunk = 'chunk';
+const int defaultBleMaxChunkStreams = 8;
+const int defaultBleMaxChunkPartsPerStream = 256;
+const int defaultBleMaxChunkBufferedBytes = 64 * 1024;
 
 class BleProtocolCodec {
   const BleProtocolCodec();
@@ -32,7 +35,7 @@ class BleProtocolCodec {
     }
 
     final json = _tryDecodeJson(value);
-    if (json != null && json['v'] is num && json['op'] is String) {
+    if (json != null && _isProtocolEnvelope(json)) {
       return BleDecodedMessage.protocol(
         envelope: json,
         token: tokenFromEnvelope(json),
@@ -57,10 +60,14 @@ class BleProtocolCodec {
     return null;
   }
 
+  bool _isProtocolEnvelope(Map<String, dynamic> json) {
+    return _nonNegativeInteger(json['v']) != null && json['op'] is String;
+  }
+
   String summaryForProtocol(Map<String, dynamic> envelope) {
     final operation = envelope['op'] ?? '?';
     final id = envelope['id'] ?? '-';
-    final hasToken = envelope['token'] is String ? 'yes' : 'no';
+    final hasToken = tokenFromEnvelope(envelope) == null ? 'no' : 'yes';
     final error = envelope['err'];
     if (error is Map) {
       return 'op=$operation id=$id token=$hasToken error=${error['code']} (${error['message']})';
@@ -113,9 +120,9 @@ class BleProtocolCodec {
         encodedData.isEmpty) {
       return null;
     }
-    final indexValue = index.toInt();
-    final countValue = count.toInt();
-    if (countValue <= 0 || indexValue < 0 || indexValue >= countValue) {
+    final indexValue = _nonNegativeInteger(index);
+    final countValue = _positiveInteger(count);
+    if (indexValue == null || countValue == null || indexValue >= countValue) {
       return null;
     }
     try {
@@ -138,6 +145,24 @@ class BleProtocolCodec {
 
   bool _isEchoReply(List<int> value) {
     return value.length >= 2 && value[0] == 0x00 && value[1] == 0xAA;
+  }
+
+  int? _nonNegativeInteger(Object? value) {
+    if (value is! num ||
+        !value.isFinite ||
+        value < 0 ||
+        value.truncateToDouble() != value) {
+      return null;
+    }
+    return value.toInt();
+  }
+
+  int? _positiveInteger(Object? value) {
+    final integer = _nonNegativeInteger(value);
+    if (integer == null || integer == 0) {
+      return null;
+    }
+    return integer;
   }
 
   Map<String, dynamic>? _tryDecodeJson(List<int> value) {

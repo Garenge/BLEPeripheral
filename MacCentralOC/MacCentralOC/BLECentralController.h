@@ -12,6 +12,7 @@ typedef void (^BLECentralStateHandler)(void);
 @property (nonatomic, readonly) BOOL isConnected;
 @property (nonatomic, readonly) BOOL isNotifyEnabled;
 @property (nonatomic, readonly) BOOL isCharacteristicReady;
+@property (nonatomic, readonly) BOOL isDemoFlowRunning;
 @property (nonatomic, copy, readonly) NSString *eventRuleMode;
 @property (nonatomic, copy, readonly) NSArray<NSString *> *discoveredDeviceLabels;
 
@@ -31,6 +32,7 @@ typedef void (^BLECentralStateHandler)(void);
 - (void)sendCommandNamed:(NSString *)name;
 - (void)sendEventRuleMode:(NSString *)mode;
 - (void)sendRawText:(NSString *)text;
+- (void)runDemoFlow;
 
 @end
 

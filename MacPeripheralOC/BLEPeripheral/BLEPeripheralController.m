@@ -12,7 +12,9 @@ static NSString * const kEventRuleModeNormal = @"normal";
 static NSString * const kEventRuleModeQuiet = @"quiet";
 static NSString * const kEventRuleModeBurst = @"burst";
 static NSUInteger const kNotifyChunkEnvelopeReserve = 96;
-static NSUInteger const kDefaultNotifyChunkPayloadLength = 128;
+static NSUInteger const kDefaultNotifyMaxUpdateLength = 185;
+static NSUInteger const kMaxNotifyChunkPartsPerStream = 256;
+static NSUInteger const kMaxNotifyQueuePacketsPerCentral = 256;
 
 static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
 
@@ -146,7 +148,8 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
 - (NSData *)responseDataForIncoming:(NSData *)incoming
                              central:(nullable CBCentral *)central
                        protocolResult:(BLEProtocolHandlerResult * _Nullable * _Nullable)protocolResult {
-    if (![BLEProtocolHandler looksLikeProtocolData:incoming]) {
+    if (![BLEProtocolHandler looksLikeProtocolData:incoming] &&
+        ![self looksLikeProtocolCandidateData:incoming]) {
         if (protocolResult) {
             *protocolResult = nil;
         }
@@ -359,6 +362,13 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
                         extra:(NSString *)extra {
     NSArray<NSData *> *packets = [self notifyPacketsForPayload:payload ?: NSData.data trackedCentral:tracked];
     [tracked.notifyQueue addObjectsFromArray:packets];
+    NSUInteger droppedPackets = [self trimNotifyQueueForTrackedCentral:tracked];
+    if (droppedPackets > 0) {
+        [self logEvent:@"TX" detail:[NSString stringWithFormat:@"notify queue trimmed: session=%@ dropped=%lu kept=%lu",
+                                      tracked.sessionID,
+                                      (unsigned long)droppedPackets,
+                                      (unsigned long)tracked.notifyQueue.count]];
+    }
     [self logEvent:@"TX" detail:[NSString stringWithFormat:@"queued %@ packet(s): session=%@ channel=%@ bytes=%lu %@",
                                   @(packets.count),
                                   tracked.sessionID,
@@ -393,38 +403,25 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
     return sentAny;
 }
 
+- (NSUInteger)trimNotifyQueueForTrackedCentral:(BLETrackedCentral *)tracked {
+    if (tracked.notifyQueue.count <= kMaxNotifyQueuePacketsPerCentral) {
+        return 0;
+    }
+    NSUInteger droppedCount = tracked.notifyQueue.count - kMaxNotifyQueuePacketsPerCentral;
+    [tracked.notifyQueue removeObjectsInRange:NSMakeRange(0, droppedCount)];
+    return droppedCount;
+}
+
 - (NSArray<NSData *> *)notifyPacketsForPayload:(NSData *)payload trackedCentral:(BLETrackedCentral *)tracked {
-    NSUInteger maxLength = tracked.maxUpdateLength > 0 ? tracked.maxUpdateLength : kDefaultNotifyChunkPayloadLength;
+    NSUInteger maxLength = tracked.maxUpdateLength > 0 ? tracked.maxUpdateLength : kDefaultNotifyMaxUpdateLength;
     if (payload.length <= maxLength) {
         return @[ payload ];
     }
 
     NSString *streamID = [self nextNotifyStreamIDForTrackedCentral:tracked];
-    NSUInteger rawChunkLength = [self rawChunkLengthForMaxUpdateLength:maxLength];
-    while (rawChunkLength > 0) {
-        NSUInteger chunkCount = (payload.length + rawChunkLength - 1) / rawChunkLength;
-        BOOL allPacketsFit = YES;
-        for (NSUInteger index = 0; index < chunkCount; index++) {
-            NSUInteger offset = index * rawChunkLength;
-            NSUInteger length = MIN(rawChunkLength, payload.length - offset);
-            NSData *packet = [self chunkPacketForPayload:payload
-                                                  stream:streamID
-                                                   index:index
-                                                   count:chunkCount
-                                                  offset:offset
-                                                  length:length
-                                               maxLength:maxLength];
-            if (packet.length == 0) {
-                allPacketsFit = NO;
-                break;
-            }
-        }
-        if (allPacketsFit) {
-            break;
-        }
-        rawChunkLength /= 2;
-    }
-
+    NSUInteger rawChunkLength = [self fittedRawChunkLengthForPayload:payload
+                                                              stream:streamID
+                                                           maxLength:maxLength];
     if (rawChunkLength == 0) {
         [self logEvent:@"TX" detail:[NSString stringWithFormat:@"payload chunk failed: session=%@ bytes=%lu maxUpdate=%lu",
                                       tracked.sessionID,
@@ -466,6 +463,18 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
                                     length:(NSUInteger)length
                                  maxLength:(NSUInteger)maxLength {
     NSData *chunkData = [payload subdataWithRange:NSMakeRange(offset, length)];
+    return [self chunkPacketForData:chunkData
+                             stream:streamID
+                              index:index
+                              count:count
+                          maxLength:maxLength];
+}
+
+- (nullable NSData *)chunkPacketForData:(NSData *)chunkData
+                                 stream:(NSString *)streamID
+                                  index:(NSUInteger)index
+                                  count:(NSUInteger)count
+                              maxLength:(NSUInteger)maxLength {
     NSDictionary *chunk = [BLEProtocolMessage chunkWithStreamID:streamID
                                                           index:index
                                                           count:count
@@ -475,6 +484,39 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
         return packet;
     }
     return nil;
+}
+
+- (NSUInteger)fittedRawChunkLengthForPayload:(NSData *)payload
+                                      stream:(NSString *)streamID
+                                   maxLength:(NSUInteger)maxLength {
+    NSUInteger rawChunkLength = MIN(payload.length, [self rawChunkLengthForMaxUpdateLength:maxLength]);
+    while (rawChunkLength > 0) {
+        NSUInteger chunkCount = (payload.length + rawChunkLength - 1) / rawChunkLength;
+        if (chunkCount <= kMaxNotifyChunkPartsPerStream &&
+            [self chunkPacketFitsForStream:streamID
+                                     index:chunkCount - 1
+                                     count:chunkCount
+                                    length:rawChunkLength
+                                 maxLength:maxLength]) {
+            return rawChunkLength;
+        }
+        rawChunkLength -= 1;
+    }
+    return 0;
+}
+
+- (BOOL)chunkPacketFitsForStream:(NSString *)streamID
+                           index:(NSUInteger)index
+                           count:(NSUInteger)count
+                          length:(NSUInteger)length
+                       maxLength:(NSUInteger)maxLength {
+    NSData *probeData = [NSMutableData dataWithLength:length];
+    NSData *packet = [self chunkPacketForData:probeData
+                                       stream:streamID
+                                        index:index
+                                        count:count
+                                    maxLength:maxLength];
+    return packet.length > 0;
 }
 
 - (NSUInteger)rawChunkLengthForMaxUpdateLength:(NSUInteger)maxLength {
@@ -541,6 +583,15 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
         return central.identifier.UUIDString;
     }
     return [NSString stringWithFormat:@"unknown-central (%@)", kUnknownCentralUUIDString];
+}
+
+- (BOOL)looksLikeProtocolCandidateData:(NSData *)data {
+    NSError *error = nil;
+    NSDictionary *message = [BLEProtocolMessage dictionaryFromData:data error:&error];
+    if (!message) {
+        return NO;
+    }
+    return message[BLEProtocolKeyVersion] != nil || message[BLEProtocolKeyOperation] != nil;
 }
 
 - (NSString *)hexStringForData:(NSData *)data maxBytes:(NSUInteger)maxBytes {

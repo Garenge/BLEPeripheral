@@ -1,5 +1,6 @@
 #import "BLEProtocolMessage.h"
 #import "BLEProtocolConstants.h"
+#import <math.h>
 
 @implementation BLEProtocolMessage
 
@@ -8,9 +9,9 @@
         return NO;
     }
 
-    id version = dictionary[BLEProtocolKeyVersion];
+    NSNumber *version = [self unsignedIntegerNumberFromValue:dictionary[BLEProtocolKeyVersion]];
     id operation = dictionary[BLEProtocolKeyOperation];
-    return [version isKindOfClass:[NSNumber class]] && [operation isKindOfClass:[NSString class]];
+    return version != nil && [operation isKindOfClass:[NSString class]];
 }
 
 + (NSDictionary *)dictionaryFromData:(NSData *)data error:(NSError **)error {
@@ -160,8 +161,8 @@
 
     NSDictionary *body = [dictionary[BLEProtocolKeyBody] isKindOfClass:[NSDictionary class]] ? dictionary[BLEProtocolKeyBody] : nil;
     NSString *stream = [body[@"stream"] isKindOfClass:[NSString class]] ? body[@"stream"] : nil;
-    NSNumber *chunkIndex = [body[@"index"] isKindOfClass:[NSNumber class]] ? body[@"index"] : nil;
-    NSNumber *chunkCount = [body[@"count"] isKindOfClass:[NSNumber class]] ? body[@"count"] : nil;
+    NSNumber *chunkIndex = [self unsignedIntegerNumberFromValue:body[@"index"]];
+    NSNumber *chunkCount = [self unsignedIntegerNumberFromValue:body[@"count"]];
     NSString *encoding = [body[@"encoding"] isKindOfClass:[NSString class]] ? body[@"encoding"] : nil;
     NSString *encodedData = [body[@"data"] isKindOfClass:[NSString class]] ? body[@"data"] : nil;
     if (stream.length == 0 || !chunkIndex || !chunkCount || ![encoding isEqualToString:@"base64"] || encodedData.length == 0) {
@@ -191,11 +192,39 @@
     return payload;
 }
 
++ (nullable NSString *)tokenFromEnvelope:(NSDictionary *)dictionary {
+    NSString *token = [dictionary[BLEProtocolKeyToken] isKindOfClass:[NSString class]] ? dictionary[BLEProtocolKeyToken] : nil;
+    if (token.length > 0) {
+        return token;
+    }
+
+    NSDictionary *body = [dictionary[BLEProtocolKeyBody] isKindOfClass:[NSDictionary class]] ? dictionary[BLEProtocolKeyBody] : nil;
+    token = [body[BLEProtocolKeyToken] isKindOfClass:[NSString class]] ? body[BLEProtocolKeyToken] : nil;
+    return token.length > 0 ? token : nil;
+}
+
++ (nullable NSNumber *)unsignedIntegerNumberFromValue:(id)value {
+    if (![value isKindOfClass:[NSNumber class]]) {
+        return nil;
+    }
+    if (CFGetTypeID((__bridge CFTypeRef)value) == CFBooleanGetTypeID()) {
+        return nil;
+    }
+    double doubleValue = [value doubleValue];
+    if (!isfinite(doubleValue) ||
+        doubleValue < 0 ||
+        doubleValue > (double)NSUIntegerMax ||
+        floor(doubleValue) != doubleValue) {
+        return nil;
+    }
+    return @((NSUInteger)doubleValue);
+}
+
 + (NSString *)summaryForDictionary:(NSDictionary *)dictionary {
     NSString *operation = dictionary[BLEProtocolKeyOperation];
     id messageID = dictionary[BLEProtocolKeyMessageID];
     NSNumber *ok = dictionary[BLEProtocolKeyOK];
-    NSString *token = dictionary[BLEProtocolKeyToken];
+    NSString *token = [self tokenFromEnvelope:dictionary];
 
     if ([dictionary[BLEProtocolKeyError] isKindOfClass:[NSDictionary class]]) {
         NSDictionary *err = dictionary[BLEProtocolKeyError];

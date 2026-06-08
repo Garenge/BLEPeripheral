@@ -10,7 +10,7 @@ flutter run -d macos
 
 Start `../MacPeripheralOC/BLEPeripheral.xcodeproj` first, then allow Bluetooth permission in the Flutter app.
 
-After connecting, the app auto-enables Notify, sends Pair code `135790`, and requests `getInfo` capability discovery. Use **Pair**, **Ping**, **Info**, **Echo**, **Telemetry**, **Command**, the event-rule segmented control, **Raw**, **Read**, and **Notify On/Off** to compare JSON protocol traffic with legacy raw echo traffic.
+After connecting, the app auto-enables Notify, sends Pair code `135790`, and requests `getInfo` capability discovery. Use **Run Demo** to queue Notify On, Pair, Info, Ping, long Echo, Telemetry, Burst/Normal rules, Sample/Identify commands, Raw, and Read; it runs one guarded flow at a time and cancels queued steps on disconnect. Use **Pair**, **Ping**, **Info**, **Echo**, **Telemetry**, **Command**, the event-rule segmented control, **Raw**, **Read**, and **Notify On/Off** to compare individual JSON protocol traffic with legacy raw echo traffic.
 
 ## What This Project Teaches
 
@@ -28,6 +28,7 @@ After connecting, the app auto-enables Notify, sends Pair code `135790`, and req
 - Capability summary capture from `info` responses
 - Event rule mode display and switching through `command setEventRule`
 - MTU chunk reassembly for oversized Notify replies/events
+- One-click demo flow for comparing Pair/Info/Ping/Echo/Telemetry/Rule/Command/Raw/Read behavior
 
 ## Sources
 
@@ -44,5 +45,5 @@ After connecting, the app auto-enables Notify, sends Pair code `135790`, and req
 - Protocol rule: Pair with `135790`, then include token for `echo`, `telemetry`, and `command`
 - Capability rule: `getInfo` is open and returns supported operations, commands, event rules, security, and transport hints
 - Event rule: `setEventRule` switches `normal`, `quiet`, or `burst` per Central session
-- Chunk rule: oversized Notify payloads arrive as `op=chunk`; the app logs progress, reassembles, then parses the original message
+- Chunk rule: oversized Notify payloads arrive as `op=chunk`; the app logs progress, caps incomplete reassembly to 8 streams / 256 parts per stream / 64 KiB total, reassembles, then parses the original message
 - Raw rule: write any non-protocol payload, receive `00 AA` + original payload by notify or read

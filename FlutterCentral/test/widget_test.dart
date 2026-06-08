@@ -16,5 +16,6 @@ void main() {
     expect(find.text('Pair code'), findsOneWidget);
     expect(find.text('Quiet'), findsOneWidget);
     expect(find.text('Burst'), findsOneWidget);
+    expect(find.text('Run Demo'), findsOneWidget);
   });
 }
