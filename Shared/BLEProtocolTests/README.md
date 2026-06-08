@@ -6,6 +6,8 @@ Lightweight Objective-C CLI smoke tests for the shared BLE JSON protocol.
 
 ```bash
 Shared/BLEProtocolTests/run_ble_protocol_smoke.sh
+# Optional: print every passing assertion
+Shared/BLEProtocolTests/run_ble_protocol_smoke.sh --verbose
 ```
 
 The script compiles the shared protocol sources with `clang` and writes the temporary binary under `${TMPDIR:-/tmp}/ble_protocol_smoke`.

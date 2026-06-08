@@ -48,7 +48,7 @@ Implemented:
 - Shared JSON protocol v1 in `Shared/BLEProtocol/`
 - GATT service `FFF0`, characteristic `FFF1` (`read` / `write` / `notify`)
 - Protocol: `pair`, `ping`, `getInfo`, `echo`, `telemetry`, `command`, server `event`; legacy raw writes
-- Notify queue with MTU-aware `op=chunk` splitting and automatic reassembly in Mac/iOS/Flutter Central clients
+- Notify queue with MTU-aware `op=chunk` splitting and bounded automatic reassembly in Mac/iOS/Flutter Central clients
 - Recorded BLE payload fixtures shared by Objective-C and Flutter protocol tests
 
 See [ble_protocol.md](ble_protocol.md) for message format.
@@ -73,7 +73,7 @@ Objective-C macOS:
 open MacCentralOC/MacCentralOC.xcodeproj
 ```
 
-Run **MacCentralOC** on **My Mac** → allow Bluetooth → **Scan** → select `MacBLE-Demo` → **Connect**. The app auto-enables Notify and auto-pairs with code `135790`; then use **Ping**, **Info**, **Echo**, **Telemetry**, **Command**, **Raw**, **Read**, and **Notify On/Off**. Type `rule:quiet`, `rule:burst`, or `rule:normal` in the payload field and press **Command** to switch event rules.
+Run **MacCentralOC** on **My Mac** → allow Bluetooth → **Scan** → select `MacBLE-Demo` → **Connect**. The app auto-enables Notify and auto-pairs with code `135790`; then use **Run Demo** to exercise the full guarded flow, or use **Ping**, **Info**, **Echo**, **Telemetry**, **Command**, **Raw**, **Read**, and **Notify On/Off** manually. Type `rule:quiet`, `rule:burst`, or `rule:normal` in the payload field and press **Command** to switch event rules.
 
 Flutter macOS:
 
@@ -82,7 +82,7 @@ cd FlutterCentral
 flutter run -d macos
 ```
 
-Allow Bluetooth → **Scan** → connect `MacBLE-Demo`. The app auto-enables Notify and auto-pairs; then use **Pair**, **Ping**, **Info**, **Echo**, **Telemetry**, **Command**, **Rule Normal/Quiet/Burst**, **Raw**, **Read**, and **Notify On/Off**.
+Allow Bluetooth → **Scan** → connect `MacBLE-Demo`. The app auto-enables Notify and auto-pairs; then use **Run Demo** to exercise the full guarded flow, or use **Pair**, **Ping**, **Info**, **Echo**, **Telemetry**, **Command**, **Rule Normal/Quiet/Burst**, **Raw**, **Read**, and **Notify On/Off** manually.
 
 iPhone Objective-C:
 
@@ -90,7 +90,7 @@ iPhone Objective-C:
 open iOSCentralOC/BLECentral.xcodeproj
 ```
 
-Select your iPhone, set **Signing Team**, run **BLECentral** → **Scan** → connect `MacBLE-Demo`. The app auto-enables Notify and auto-pairs; then use **Pair**, **Ping**, **Info**, **Echo**, **Telemetry**, **Command**, **Raw**, **Read**, and **Notify On/Off**. Type `rule:quiet`, `rule:burst`, or `rule:normal` in the text field and tap **Command** to switch event rules.
+Select your iPhone, set **Signing Team**, run **BLECentral** → **Scan** → connect `MacBLE-Demo`. The app auto-enables Notify and auto-pairs; then use **Run Demo** to exercise the full guarded flow, or use **Pair**, **Ping**, **Info**, **Echo**, **Telemetry**, **Command**, **Raw**, **Read**, and **Notify On/Off** manually. Type `rule:quiet`, `rule:burst`, or `rule:normal` in the text field and tap **Command** to switch event rules.
 
 ### Terminal verification
 
@@ -101,6 +101,8 @@ scripts/verify_ble_suite.sh
 # Full local build check for all first-party apps
 scripts/verify_ble_suite.sh --xcode
 ```
+
+`--xcode` stores verbose build logs under `${TMPDIR:-/tmp}/ble_suite_verify_logs` and prints them only when a build step fails.
 
 ## BLE Profile
 
@@ -148,6 +150,7 @@ Demo commands: `identify`, `sample`, `resetCounters`, `setEventRule`.
 | Command `setEventRule` | Write + Notify | Yes | Switches `normal` / `quiet` / `burst`; pushes `event.ruleChanged` |
 | Raw | Write + Notify/Read | No | Legacy `00 AA` + original bytes |
 | Chunk | Notify | No | Automatic transport wrapper for oversized replies/events; clients reassemble then parse original payload |
+| Run Demo | Write + Notify + Read | Mixed | Queues Notify On, Pair, Info, Ping, long Echo, Telemetry, Burst rule, Sample command, Normal rule, Identify command, Raw, and Read; runs one flow at a time and cancels queued steps on disconnect |
 
 ## Next Work
 
