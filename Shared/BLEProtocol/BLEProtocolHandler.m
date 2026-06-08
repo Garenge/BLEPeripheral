@@ -74,7 +74,7 @@
                                 responseToken:&responseToken];
         result.pairingSucceeded = responseToken.length > 0;
         result.sessionToken = responseToken;
-    } else if ([self operationRequiresToken:operation] &&
+    } else if ([self protectedOperationRequiresToken:operation] &&
                ![self request:request hasToken:currentToken]) {
         response = [BLEProtocolMessage errorResponseWithMessageID:messageID
                                                              code:BLEProtocolErrorUnauthorized
@@ -435,20 +435,16 @@
            [response[BLEProtocolKeyOK] boolValue];
 }
 
-+ (BOOL)operationRequiresToken:(NSString *)operation {
-    NSSet<NSString *> *openOperations = [NSSet setWithArray:[self openOperationNames]];
-    return ![openOperations containsObject:operation ?: @""];
++ (BOOL)protectedOperationRequiresToken:(NSString *)operation {
+    NSSet<NSString *> *protectedOperations = [NSSet setWithArray:[self protectedOperationNames]];
+    return [protectedOperations containsObject:operation ?: @""];
 }
 
 + (BOOL)request:(NSDictionary *)request hasToken:(NSString *)token {
     if (token.length == 0) {
         return NO;
     }
-    NSString *requestToken = [request[BLEProtocolKeyToken] isKindOfClass:[NSString class]] ? request[BLEProtocolKeyToken] : nil;
-    if (requestToken.length == 0 &&
-        [request[BLEProtocolKeyBody] isKindOfClass:[NSDictionary class]]) {
-        requestToken = request[BLEProtocolKeyBody][BLEProtocolKeyToken];
-    }
+    NSString *requestToken = [BLEProtocolMessage tokenFromEnvelope:request];
     return [requestToken isEqualToString:token];
 }
 

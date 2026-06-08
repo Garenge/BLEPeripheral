@@ -9,10 +9,13 @@ static NSString * const kCharacteristicUUID = @"0000FFF1-0000-1000-8000-00805F9B
 static NSString * const kSessionID = @"test-session";
 
 static NSUInteger gFailureCount = 0;
+static BOOL gVerbose = NO;
 
 static void AssertTrue(BOOL condition, NSString *message) {
     if (condition) {
-        NSLog(@"PASS %@", message);
+        if (gVerbose) {
+            NSLog(@"PASS %@", message);
+        }
     } else {
         gFailureCount += 1;
         NSLog(@"FAIL %@", message);
@@ -128,6 +131,69 @@ static void TestEchoWithToken(void) {
     AssertTrue([response[BLEProtocolKeyBody][@"text"] isEqualToString:@"hello"], @"echo response body text matches");
 }
 
+static void TestBodyTokenMustBeString(void) {
+    NSString *token = @"tok-test";
+    NSDictionary *request = @{
+        BLEProtocolKeyVersion: @(BLEProtocolVersion),
+        BLEProtocolKeyOperation: BLEProtocolOpEcho,
+        BLEProtocolKeyMessageID: @"echo-bad-body-token",
+        BLEProtocolKeyBody: @{
+            @"text": @"hello",
+            BLEProtocolKeyToken: @123,
+        },
+    };
+    NSData *data = [BLEProtocolMessage dataFromDictionary:request error:nil];
+    BLEProtocolHandlerResult *result = HandleRequest(data, token, 0, 1, 0, 0);
+    NSDictionary *response = EnvelopeFromData(result.responseData);
+
+    AssertTrue([BLEProtocolMessage tokenFromEnvelope:request] == nil, @"body token ignores non-string values");
+    AssertTrue([response[BLEProtocolKeyOperation] isEqualToString:BLEProtocolOpError], @"numeric body token returns error");
+    AssertTrue([response[BLEProtocolKeyError][@"code"] isEqualToString:BLEProtocolErrorUnauthorized], @"numeric body token is unauthorized");
+}
+
+static void TestUnknownOperationDoesNotRequireTokenFirst(void) {
+    NSData *request = DataForRequest(@"dance", @"unknown-1", nil, @{});
+    BLEProtocolHandlerResult *result = HandleRequest(request, nil, 0, 0, 0, 0);
+    NSDictionary *response = EnvelopeFromData(result.responseData);
+
+    AssertTrue([response[BLEProtocolKeyOperation] isEqualToString:BLEProtocolOpError], @"unknown op returns error");
+    AssertTrue([response[BLEProtocolKeyError][@"code"] isEqualToString:BLEProtocolErrorUnknownOperation], @"unknown op is reported before auth");
+
+    NSData *tokenRequest = DataForRequest(@"dance", @"unknown-2", @"tok-test", @{});
+    BLEProtocolHandlerResult *tokenResult = HandleRequest(tokenRequest, @"tok-test", 0, 0, 0, 0);
+    NSDictionary *tokenResponse = EnvelopeFromData(tokenResult.responseData);
+    AssertTrue([tokenResponse[BLEProtocolKeyError][@"code"] isEqualToString:BLEProtocolErrorUnknownOperation], @"unknown op with token is also unknown_op");
+}
+
+static void TestEnvelopeRejectsInvalidVersionNumbers(void) {
+    NSArray<NSDictionary *> *invalidVersions = @[
+        @{
+            @"name": @"boolean version",
+            @"value": @YES,
+        },
+        @{
+            @"name": @"fractional version",
+            @"value": @1.5,
+        },
+    ];
+
+    for (NSDictionary *version in invalidVersions) {
+        NSDictionary *request = @{
+            BLEProtocolKeyVersion: version[@"value"],
+            BLEProtocolKeyOperation: BLEProtocolOpPing,
+            BLEProtocolKeyMessageID: @"bad-version",
+            BLEProtocolKeyBody: @{},
+        };
+        NSData *data = [BLEProtocolMessage dataFromDictionary:request error:nil];
+        BLEProtocolHandlerResult *result = HandleRequest(data, nil, 0, 0, 0, 0);
+        NSDictionary *response = EnvelopeFromData(result.responseData);
+        AssertTrue(![BLEProtocolHandler looksLikeProtocolData:data],
+                   [NSString stringWithFormat:@"protocol detector rejects %@", version[@"name"]]);
+        AssertTrue([response[BLEProtocolKeyError][@"code"] isEqualToString:BLEProtocolErrorInvalidEnvelope],
+                   [NSString stringWithFormat:@"handler rejects %@", version[@"name"]]);
+    }
+}
+
 static void TestInfoCapabilityDiscovery(void) {
     NSData *request = DataForRequest(BLEProtocolOpGetInfo, @"info-1", nil, @{});
     BLEProtocolHandlerResult *result = HandleRequest(request, nil, 1, 2, 3, 4);
@@ -226,6 +292,65 @@ static void TestChunkEnvelopeRoundTrip(void) {
     AssertTrue([decodedPayload isEqualToData:payload], @"chunk payload round trips");
 }
 
+static void TestChunkRejectsInvalidNumericFields(void) {
+    NSData *payload = [@"hello chunk" dataUsingEncoding:NSUTF8StringEncoding];
+    NSString *encoded = [payload base64EncodedStringWithOptions:0];
+    NSArray<NSDictionary *> *invalidChunks = @[
+        @{
+            @"name": @"negative index",
+            @"body": @{
+                @"stream": @"stream-1",
+                @"index": @(-1),
+                @"count": @2,
+                @"encoding": @"base64",
+                @"data": encoded,
+            },
+        },
+        @{
+            @"name": @"negative count",
+            @"body": @{
+                @"stream": @"stream-1",
+                @"index": @0,
+                @"count": @(-2),
+                @"encoding": @"base64",
+                @"data": encoded,
+            },
+        },
+        @{
+            @"name": @"fractional index",
+            @"body": @{
+                @"stream": @"stream-1",
+                @"index": @1.5,
+                @"count": @2,
+                @"encoding": @"base64",
+                @"data": encoded,
+            },
+        },
+        @{
+            @"name": @"boolean index",
+            @"body": @{
+                @"stream": @"stream-1",
+                @"index": @YES,
+                @"count": @2,
+                @"encoding": @"base64",
+                @"data": encoded,
+            },
+        },
+    ];
+
+    for (NSDictionary *invalidChunk in invalidChunks) {
+        NSDictionary *envelope = [BLEProtocolMessage successResponseForOperation:BLEProtocolOpChunk
+                                                                       messageID:@"chunk-invalid"
+                                                                            body:invalidChunk[@"body"]];
+        NSData *decodedPayload = [BLEProtocolMessage chunkPayloadFromEnvelope:envelope
+                                                                     streamID:nil
+                                                                        index:nil
+                                                                        count:nil];
+        AssertTrue(decodedPayload == nil,
+                   [NSString stringWithFormat:@"chunk rejects %@", invalidChunk[@"name"]]);
+    }
+}
+
 static void TestRecordedPayloadFixtures(void) {
     NSArray *payloads = FixturePayloads();
     NSDictionary *legacyFixture = FixtureNamed(payloads, @"legacy_echo");
@@ -261,16 +386,21 @@ static void TestRecordedPayloadFixtures(void) {
 
 int main(int argc, const char * argv[]) {
     @autoreleasepool {
+        gVerbose = [NSProcessInfo.processInfo.environment[@"BLE_PROTOCOL_SMOKE_VERBOSE"] boolValue];
         NSLog(@"BLEProtocol smoke tests starting");
         TestPairSuccess();
         TestProtectedOperationRequiresToken();
         TestEchoWithToken();
+        TestUnknownOperationDoesNotRequireTokenFirst();
+        TestEnvelopeRejectsInvalidVersionNumbers();
         TestInfoCapabilityDiscovery();
         TestCommandMetadata();
         TestSetEventRuleCommand();
         TestSetEventRuleRejectsInvalidMode();
         TestCommandMissingName();
+        TestBodyTokenMustBeString();
         TestChunkEnvelopeRoundTrip();
+        TestChunkRejectsInvalidNumericFields();
         TestRecordedPayloadFixtures();
         if (gFailureCount > 0) {
             NSLog(@"BLEProtocol smoke tests failed: %lu", (unsigned long)gFailureCount);

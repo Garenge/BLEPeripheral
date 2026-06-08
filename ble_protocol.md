@@ -30,7 +30,8 @@ This is a learning/demo security layer, not production cryptography.
 - First-party clients auto-send `pair` after FFF1 notify is enabled.
 - First-party clients auto-send `getInfo` during connection setup to discover capabilities.
 - `pair` returns a session `token` in both the top-level envelope and `body.token`.
-- Protected operations must include that `token`.
+- Protected operations must include that string `token`.
+- Non-string `token` values are ignored and therefore fail protected operations as `unauthorized`.
 - `ping` and `getInfo` stay open for diagnostics.
 - Session token is scoped to the current peripheral app runtime and Central UUID-derived session.
 
@@ -121,7 +122,7 @@ Server may also push `chunk` notifications when a reply/event is larger than the
 }
 ```
 
-`index` is zero-based. Receivers collect all chunks with the same `stream`, concatenate decoded `data` by `index`, then parse the reassembled bytes through the normal protocol/legacy path. First-party Mac, iOS, and Flutter Central clients log chunk progress and `chunk complete`.
+`index` is zero-based. `index` and `count` must be JSON numbers that represent non-negative integers, and booleans/fractional/negative values are rejected by first-party decoders. Receivers collect all chunks with the same `stream`, concatenate decoded `data` by `index`, then parse the reassembled bytes through the normal protocol/legacy path. First-party Mac, iOS, and Flutter Central clients log chunk progress and `chunk complete`; they also cap incomplete reassembly state to 8 active streams, 256 parts per stream, and 64 KiB total buffered chunk bytes, trimming or dropping over-limit streams with a reasoned log line.
 
 ## Capability Discovery
 
@@ -176,7 +177,7 @@ Supported demo commands:
 - `invalid_json` — payload is not valid JSON object
 - `invalid_envelope` — missing/invalid `v` or `op`, or unsupported version
 - `invalid_body` — operation-specific body validation failed
-- `unknown_op` — unsupported `op`
+- `unknown_op` — unsupported `op`; returned before token checks so typo diagnostics stay visible
 - `unauthorized` — token is missing or does not match the current session
 - `pairing_failed` — pair code mismatch
 
