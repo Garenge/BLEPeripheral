@@ -1,10 +1,12 @@
 # FlutterCentral BLE Central
 
-Flutter macOS app that uses `flutter_blue_plus` to scan, connect, pair, and exercise the `MacBLE-Demo` peripheral.
+Flutter Android/iOS/macOS app that uses `flutter_blue_plus` to scan, connect, pair, and exercise the `MacBLE-Demo` peripheral.
 
 ## Run
 
 ```bash
+flutter run -d android
+flutter run -d ios
 flutter run -d macos
 ```
 
@@ -12,38 +14,24 @@ Start `../MacPeripheralOC/BLEPeripheral.xcodeproj` first, then allow Bluetooth p
 
 After connecting, the app auto-enables Notify, sends Pair code `135790`, and requests `getInfo` capability discovery. Use **Run Demo** to queue Notify On, Pair, Info, Ping, long Echo, Telemetry, Burst/Normal rules, Sample/Identify commands, Raw, and Read; it runs one guarded flow at a time and cancels queued steps on disconnect. Use **Pair**, **Ping**, **Info**, **Echo**, **Telemetry**, **Command**, the event-rule segmented control, **Raw**, **Read**, and **Notify On/Off** to compare individual JSON protocol traffic with legacy raw echo traffic.
 
-## What This Project Teaches
+## Tutorial
 
-- `FlutterBluePlus.adapterState`
-- `FlutterBluePlus.startScan` with service `FFF0`
-- Scanner match metadata for RSSI, service/name hit reason, last-seen time, and advertisement payload counts
-- `BluetoothDevice.connect`
-- `discoverServices`
-- `BluetoothCharacteristic.read`
-- `BluetoothCharacteristic.write`
-- `BluetoothCharacteristic.setNotifyValue`
-- `onValueReceived` for notify/read data
-- JSON envelope encoding/decoding in Dart
-- Session token capture from `paired` responses
-- Capability summary capture from `info` responses
-- Event rule mode display and switching through `command setEventRule`
-- MTU chunk reassembly for oversized Notify replies/events
-- One-click demo flow for comparing Pair/Info/Ping/Echo/Telemetry/Rule/Command/Raw/Read behavior
+See [flutter_ble_connection_and_transfer.md](flutter_ble_connection_and_transfer.md) for the Flutter BLE dependency, Android/iOS/macOS permissions, scan/connect/read/write/notify flow, and project protocol notes.
+
+## Protocol
+
+See [ble_protocol_spec.md](ble_protocol_spec.md) for the MacBLE-Demo GATT profile, JSON envelope, operations, commands, events, chunking, and legacy raw echo rules.
+
+## Roadmap
+
+See [mobile_ble_product_todo.md](mobile_ble_product_todo.md) for Android/iOS joint debugging, mobile UI adaptation, protocol documentation, and productization todos.
 
 ## Sources
 
-- `lib/main.dart` — macOS learning UI
+- `lib/main.dart` — app bootstrap and theme entry
+- `lib/src/ble_central_page.dart` — Android/iOS/macOS mobile-first BLE UI
 - `lib/src/ble_central_controller.dart` — BLE Central flow and log parsing
+- `android/app/src/main/AndroidManifest.xml` — Android Bluetooth permissions
+- `ios/Runner/Info.plist` — iOS Bluetooth permission strings
 - `macos/Runner/Info.plist` — Bluetooth permission strings
 - `macos/Runner/*.entitlements` — Bluetooth sandbox entitlement
-
-## BLE Profile
-
-- Peripheral name: `MacBLE-Demo`
-- Service: `0000FFF0-0000-1000-8000-00805F9B34FB`
-- Characteristic: `0000FFF1-0000-1000-8000-00805F9B34FB`
-- Protocol rule: Pair with `135790`, then include token for `echo`, `telemetry`, and `command`
-- Capability rule: `getInfo` is open and returns supported operations, commands, event rules, security, and transport hints
-- Event rule: `setEventRule` switches `normal`, `quiet`, or `burst` per Central session
-- Chunk rule: oversized Notify payloads arrive as `op=chunk`; the app logs progress, caps incomplete reassembly to 8 streams / 256 parts per stream / 64 KiB total, reassembles, then parses the original message
-- Raw rule: write any non-protocol payload, receive `00 AA` + original payload by notify or read

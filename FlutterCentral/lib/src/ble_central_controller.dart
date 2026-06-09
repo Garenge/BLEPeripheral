@@ -216,6 +216,11 @@ class BleCentralController extends ChangeNotifier {
     _log('TX raw write: ${payload.length} B text="$text"');
   }
 
+  void clearLogs() {
+    logs.clear();
+    _log('SYS logs cleared');
+  }
+
   Future<void> runDemoFlow() async {
     if (demoCharacteristic == null || connectedDevice == null) {
       _log('FLOW demo flow skipped: characteristic missing');
