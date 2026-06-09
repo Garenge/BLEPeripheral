@@ -6,6 +6,11 @@ import 'package:flutter_central/src/ble_central_controller.dart';
 
 void main() {
   testWidgets('shows BLE central title', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     await tester.pumpWidget(
       FlutterCentralApp(
         controllerFactory: () => BleCentralController(enableBluetooth: false),
@@ -19,6 +24,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Pair code'), findsOneWidget);
+    expect(find.text('Request Status'), findsOneWidget);
+    expect(find.text('Pair request'), findsOneWidget);
+    expect(find.text('Command request'), findsOneWidget);
+
+    await tester.drag(find.byType(ListView), const Offset(0, -520));
+    await tester.pumpAndSettle();
+
     expect(find.text('Run Demo'), findsOneWidget);
     expect(find.text('Info'), findsOneWidget);
     expect(find.text('Echo'), findsOneWidget);

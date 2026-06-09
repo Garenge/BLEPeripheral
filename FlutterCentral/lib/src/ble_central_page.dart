@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import 'ble_central_controller.dart';
 import 'ble_protocol_codec.dart';
+import 'ble_request_status.dart';
 
 typedef BleCentralControllerFactory = BleCentralController Function();
 
@@ -165,6 +166,8 @@ class _BleCentralPageState extends State<BleCentralPage> {
       child: ListView(
         children: [
           _buildSectionHeader('Session', _controller.connectionLabel),
+          const SizedBox(height: 12),
+          _buildRequestStatusPanel(),
           const SizedBox(height: 12),
           TextField(
             controller: _pairCodeController,
@@ -370,6 +373,21 @@ class _BleCentralPageState extends State<BleCentralPage> {
     );
   }
 
+  Widget _buildRequestStatusPanel() {
+    final statuses = _controller.requestStatuses;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('Request Status', style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: 8),
+        for (var index = 0; index < statuses.length; index += 1) ...[
+          _RequestStatusRow(status: statuses[index]),
+          if (index < statuses.length - 1) const Divider(height: 12),
+        ],
+      ],
+    );
+  }
+
   Widget _buildAdvancedActions() {
     return ExpansionTile(
       tilePadding: EdgeInsets.zero,
@@ -567,5 +585,67 @@ class _StatusChip extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _RequestStatusRow extends StatelessWidget {
+  const _RequestStatusRow({required this.status});
+
+  final BleRequestStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final color = _phaseColor(colorScheme);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(_phaseIcon(), size: 18, color: color),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${status.label} request',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                status.detail,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          status.phaseLabel,
+          style: Theme.of(
+            context,
+          ).textTheme.labelMedium?.copyWith(color: color),
+        ),
+      ],
+    );
+  }
+
+  IconData _phaseIcon() {
+    return switch (status.phase) {
+      BleRequestPhase.idle => Icons.radio_button_unchecked,
+      BleRequestPhase.sending => Icons.sync,
+      BleRequestPhase.succeeded => Icons.check_circle_outline,
+      BleRequestPhase.failed => Icons.error_outline,
+    };
+  }
+
+  Color _phaseColor(ColorScheme colorScheme) {
+    return switch (status.phase) {
+      BleRequestPhase.idle => colorScheme.outline,
+      BleRequestPhase.sending => colorScheme.primary,
+      BleRequestPhase.succeeded => colorScheme.tertiary,
+      BleRequestPhase.failed => colorScheme.error,
+    };
   }
 }

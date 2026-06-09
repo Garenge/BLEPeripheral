@@ -4,7 +4,9 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:flutter_central/src/ble_chunk_reassembler.dart';
+import 'package:flutter_central/src/ble_central_controller.dart';
 import 'package:flutter_central/src/ble_protocol_codec.dart';
+import 'package:flutter_central/src/ble_request_status.dart';
 
 void main() {
   const codec = BleProtocolCodec();
@@ -181,6 +183,65 @@ void main() {
     expect(decoded.kind, BleDecodedMessageKind.legacyEcho);
     expect(decoded.text, 'raw');
     expect(decoded.body, utf8.encode('raw'));
+  });
+
+  test('controller captures protocol request success and errors', () {
+    final controller = BleCentralController(enableBluetooth: false);
+    addTearDown(controller.dispose);
+
+    controller.debugMarkRequestSending('pair', 'pair-fixture');
+    controller.debugHandleIncoming(
+      utf8.encode(
+        jsonEncode({
+          'v': 1,
+          'op': 'paired',
+          'id': 'pair-fixture',
+          'ok': true,
+          'body': {'token': 'tok-body'},
+        }),
+      ),
+    );
+    final pair = controller.requestStatuses.firstWhere(
+      (status) => status.operation == 'pair',
+    );
+    expect(pair.phase, BleRequestPhase.succeeded);
+    expect(pair.detail, 'Paired, token captured');
+
+    controller.debugHandleIncoming(
+      utf8.encode(
+        jsonEncode({
+          'v': 1,
+          'op': 'error',
+          'id': 'echo-fixture',
+          'ok': false,
+          'err': {'code': 'unauthorized', 'message': 'Missing token.'},
+        }),
+      ),
+    );
+    expect(
+      controller.requestStatuses
+          .firstWhere((status) => status.operation == 'echo')
+          .phase,
+      BleRequestPhase.idle,
+    );
+
+    controller.debugMarkRequestSending('echo', 'echo-fixture');
+    controller.debugHandleIncoming(
+      utf8.encode(
+        jsonEncode({
+          'v': 1,
+          'op': 'echo',
+          'id': 'echo-fixture',
+          'ok': false,
+          'err': {'code': 'unauthorized', 'message': 'Missing token.'},
+        }),
+      ),
+    );
+    final echo = controller.requestStatuses.firstWhere(
+      (status) => status.operation == 'echo',
+    );
+    expect(echo.phase, BleRequestPhase.failed);
+    expect(echo.detail, 'unauthorized: Missing token.');
   });
 
   test('falls back to raw payloads', () {

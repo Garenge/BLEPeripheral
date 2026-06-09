@@ -6,9 +6,11 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import 'ble_chunk_reassembler.dart';
 import 'ble_protocol_codec.dart';
+import 'ble_request_status.dart';
 
 const String demoPeripheralName = 'MacBLE-Demo';
 const Duration _demoFlowStepDelay = Duration(milliseconds: 350);
+const Duration _requestStatusTimeout = Duration(seconds: 12);
 const String _demoFlowLongEchoText =
     'demo-flow long echo payload: pair info ping telemetry rule burst sample '
     'identify raw read; this string is intentionally long enough to exercise '
@@ -70,6 +72,15 @@ class BleCentralController extends ChangeNotifier {
   final BleProtocolCodec _protocolCodec = const BleProtocolCodec();
   final BleChunkReassembler _chunkReassembler = BleChunkReassembler();
   final Map<String, DiscoveredBleDevice> _devicesById = {};
+  final Map<String, BleRequestStatus> _requestStatuses = {
+    for (final definition in bleTrackedRequestDefinitions)
+      definition.operation: BleRequestStatus.idle(
+        operation: definition.operation,
+        label: definition.label,
+      ),
+  };
+  final Map<String, String> _pendingOperationByMessageId = {};
+  final Map<String, Timer> _requestTimeouts = {};
   final List<String> logs = [];
   StreamSubscription<List<int>>? _valueSubscription;
 
@@ -89,6 +100,17 @@ class BleCentralController extends ChangeNotifier {
     final devices = _devicesById.values.toList();
     devices.sort((a, b) => b.rssi.compareTo(a.rssi));
     return devices;
+  }
+
+  List<BleRequestStatus> get requestStatuses {
+    return [
+      for (final definition in bleTrackedRequestDefinitions)
+        _requestStatuses[definition.operation] ??
+            BleRequestStatus.idle(
+              operation: definition.operation,
+              label: definition.label,
+            ),
+    ];
   }
 
   String get adapterLabel => 'Bluetooth: ${_adapterState.name}';
@@ -259,20 +281,28 @@ class BleCentralController extends ChangeNotifier {
   }) async {
     final characteristic = demoCharacteristic;
     if (characteristic == null) {
+      _setRequestFailed(operation, 'Characteristic missing');
       _log('TX protocol $operation skipped: characteristic missing');
       return;
     }
     _protocolSequence += 1;
+    final messageId = 'flutter-$_protocolSequence';
     final payload = _protocolCodec.encodeRequest(
       operation: operation,
-      messageId: 'flutter-$_protocolSequence',
+      messageId: messageId,
       body: body,
       token: includeToken ? sessionToken : null,
     );
-    await characteristic.write(payload, withoutResponse: false);
-    _log(
-      'TX protocol $operation: ${payload.length} B token=${includeToken && sessionToken != null ? "yes" : "no"}',
-    );
+    _setRequestSending(operation, messageId);
+    try {
+      await characteristic.write(payload, withoutResponse: false);
+      _log(
+        'TX protocol $operation: ${payload.length} B token=${includeToken && sessionToken != null ? "yes" : "no"}',
+      );
+    } catch (error) {
+      _setRequestFailed(operation, 'Write failed: $error', messageId);
+      _log('TX protocol $operation failed: $error');
+    }
   }
 
   Future<void> setNotify(bool enabled) async {
@@ -337,10 +367,21 @@ class BleCentralController extends ChangeNotifier {
   void dispose() {
     _cancelDemoFlow('controller disposed');
     _cancelValueSubscription();
+    _cancelAllRequestTimers();
     for (final subscription in _subscriptions) {
       subscription.cancel();
     }
     super.dispose();
+  }
+
+  @visibleForTesting
+  void debugHandleIncoming(List<int> value) {
+    _logIncoming(value, 'RX test');
+  }
+
+  @visibleForTesting
+  void debugMarkRequestSending(String operation, String messageId) {
+    _setRequestSending(operation, messageId);
   }
 
   void _handleAdapterState(BluetoothAdapterState state) {
@@ -427,6 +468,7 @@ class BleCentralController extends ChangeNotifier {
     sessionToken = null;
     capabilitySummary = null;
     eventRuleMode = 'normal';
+    _resetRequestStatuses();
     _cancelValueSubscription();
     _chunkReassembler.clear();
     notifyListeners();
@@ -460,6 +502,7 @@ class BleCentralController extends ChangeNotifier {
           '${operation == "event" ? "EVT" : "RX"} body=${jsonEncode(envelope['body'])}',
         );
       }
+      _captureRequestStatus(envelope);
       return;
     }
     _log('$label raw: ${decoded.bytes.length} B text="${decoded.text}"');
@@ -510,6 +553,192 @@ class BleCentralController extends ChangeNotifier {
       sessionToken = token;
       _log('AUTH token captured: $token');
       notifyListeners();
+    }
+  }
+
+  void _setRequestSending(String operation, String messageId) {
+    final status = _requestStatuses[operation];
+    if (status == null) {
+      return;
+    }
+    _cancelRequestTimer(operation);
+    _dropPendingRequestsForOperation(operation);
+    _pendingOperationByMessageId[messageId] = operation;
+    _requestStatuses[operation] = status.copyWith(
+      phase: BleRequestPhase.sending,
+      detail: 'Waiting for response',
+      messageId: messageId,
+      updatedAt: DateTime.now(),
+    );
+    _requestTimeouts[operation] = Timer(_requestStatusTimeout, () {
+      final current = _requestStatuses[operation];
+      if (current?.phase == BleRequestPhase.sending &&
+          current?.messageId == messageId) {
+        _setRequestFailed(
+          operation,
+          'Timed out waiting for response',
+          messageId,
+        );
+      }
+    });
+    notifyListeners();
+  }
+
+  void _setRequestSucceeded(
+    String operation,
+    String detail, [
+    String? messageId,
+  ]) {
+    final status = _requestStatuses[operation];
+    if (status == null) {
+      return;
+    }
+    _clearPendingRequest(operation, messageId);
+    _requestStatuses[operation] = status.copyWith(
+      phase: BleRequestPhase.succeeded,
+      detail: detail,
+      messageId: messageId,
+      updatedAt: DateTime.now(),
+    );
+    notifyListeners();
+  }
+
+  void _setRequestFailed(String operation, String detail, [String? messageId]) {
+    final status = _requestStatuses[operation];
+    if (status == null) {
+      return;
+    }
+    _clearPendingRequest(operation, messageId);
+    _requestStatuses[operation] = status.copyWith(
+      phase: BleRequestPhase.failed,
+      detail: detail,
+      messageId: messageId,
+      updatedAt: DateTime.now(),
+    );
+    notifyListeners();
+  }
+
+  void _captureRequestStatus(Map<String, dynamic> envelope) {
+    final operation = _operationForResponse(envelope);
+    if (operation == null) {
+      return;
+    }
+    final messageId = _stringValue(envelope['id']);
+    final error = envelope['err'];
+    if (envelope['ok'] == false || error is Map) {
+      _setRequestFailed(operation, _errorDetail(error), messageId);
+      return;
+    }
+    final body = envelope['body'];
+    if (operation == 'command' && body is Map && body['accepted'] == false) {
+      _setRequestFailed(operation, _commandRejectedDetail(body), messageId);
+      return;
+    }
+    _setRequestSucceeded(
+      operation,
+      _successDetail(operation, envelope),
+      messageId,
+    );
+  }
+
+  String? _operationForResponse(Map<String, dynamic> envelope) {
+    final messageId = _stringValue(envelope['id']);
+    if (messageId != null) {
+      return _pendingOperationByMessageId[messageId];
+    }
+    return switch (envelope['op']) {
+      'paired' => 'pair',
+      'info' => 'getInfo',
+      'pong' => 'ping',
+      'echo' => 'echo',
+      'telemetry' => 'telemetry',
+      'commandResult' => 'command',
+      _ => null,
+    };
+  }
+
+  String _successDetail(String operation, Map<String, dynamic> envelope) {
+    final body = envelope['body'];
+    return switch (operation) {
+      'pair' =>
+        _protocolCodec.tokenFromEnvelope(envelope) == null
+            ? 'Paired'
+            : 'Paired, token captured',
+      'getInfo' => 'Capabilities loaded',
+      'ping' => 'Pong received',
+      'echo' =>
+        body is Map && body['text'] is String
+            ? 'Echo "${_shortText(body['text'] as String)}"'
+            : 'Echo received',
+      'telemetry' =>
+        body is Map
+            ? 'reads=${body['reads'] ?? '-'} writes=${body['writes'] ?? '-'} notifies=${body['notifies'] ?? '-'} events=${body['events'] ?? '-'}'
+            : 'Telemetry received',
+      'command' =>
+        body is Map && body['name'] is String
+            ? '${body['name']} accepted'
+            : 'Command accepted',
+      _ => 'Response received',
+    };
+  }
+
+  String _errorDetail(Object? error) {
+    if (error is Map) {
+      final code = error['code'] ?? 'error';
+      final message = error['message'] ?? 'Request failed';
+      return '$code: $message';
+    }
+    return 'Request failed';
+  }
+
+  String _commandRejectedDetail(Map<dynamic, dynamic> body) {
+    final name = body['name'] ?? 'command';
+    final message = body['message'] ?? 'Command rejected';
+    return '$name rejected: $message';
+  }
+
+  String? _stringValue(Object? value) {
+    return value is String && value.isNotEmpty ? value : null;
+  }
+
+  String _shortText(String text) {
+    if (text.length <= 40) {
+      return text;
+    }
+    return '${text.substring(0, 37)}...';
+  }
+
+  void _clearPendingRequest(String operation, String? messageId) {
+    _cancelRequestTimer(operation);
+    if (messageId != null) {
+      _pendingOperationByMessageId.remove(messageId);
+    }
+  }
+
+  void _dropPendingRequestsForOperation(String operation) {
+    _pendingOperationByMessageId.removeWhere((_, value) => value == operation);
+  }
+
+  void _cancelRequestTimer(String operation) {
+    final timer = _requestTimeouts.remove(operation);
+    timer?.cancel();
+  }
+
+  void _cancelAllRequestTimers() {
+    for (final timer in _requestTimeouts.values) {
+      timer.cancel();
+    }
+    _requestTimeouts.clear();
+    _pendingOperationByMessageId.clear();
+  }
+
+  void _resetRequestStatuses() {
+    _cancelAllRequestTimers();
+    for (final definition in bleTrackedRequestDefinitions) {
+      _requestStatuses[definition.operation] = BleRequestStatus.idle(
+        operation: definition.operation,
+        label: definition.label,
+      );
     }
   }
 

@@ -52,7 +52,7 @@
 - [x] 首屏突出扫描和连接状态。
 - [x] 连接成功后展示设备能力、配对状态、事件规则、最近遥测。
 - [x] 数据传输区提供 Echo、Telemetry、Command 和 Raw 的清晰入口。
-- [ ] 对 Pair、Info、Ping、Echo、Telemetry、Command 建立统一的请求状态和错误展示。
+- [x] 对 Pair、Info、Ping、Echo、Telemetry、Command 建立统一的请求状态和错误展示。
 - [x] 将协议日志与用户可见结果分层展示，避免普通用户直接面对大量原始 JSON。
 - [x] 保留高级调试日志，方便 Android/iOS/macOS 对照排障。
 - [x] 为关键流程补充 widget/controller 测试。
