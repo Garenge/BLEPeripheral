@@ -26,6 +26,10 @@ See [ble_protocol_spec.md](ble_protocol_spec.md) for the MacBLE-Demo GATT profil
 
 See [mobile_ble_product_todo.md](mobile_ble_product_todo.md) for Android/iOS joint debugging, mobile UI adaptation, protocol documentation, and productization todos.
 
+## Joint Debugging
+
+See [mobile_ble_joint_debugging.md](mobile_ble_joint_debugging.md) for the Android/iOS real-device BLE acceptance flow, verification matrix, and log record template.
+
 ## Sources
 
 - `lib/main.dart` — app bootstrap and theme entry
