@@ -1,6 +1,8 @@
 #import "AppDelegate.h"
 #import "BLECentralController.h"
 
+static NSUInteger const kMaxLogLineCount = 300;
+
 @interface AppDelegate ()
 
 @property (nonatomic, strong) NSWindow *window;
@@ -22,8 +24,10 @@
 @property (nonatomic, strong) NSButton *demoFlowButton;
 @property (nonatomic, strong) NSButton *rawButton;
 @property (nonatomic, strong) NSButton *notifyButton;
+@property (nonatomic, strong) NSButton *clearLogButton;
 @property (nonatomic, strong) NSTextView *logTextView;
 @property (nonatomic, strong) BLECentralController *centralController;
+@property (nonatomic, strong) NSMutableArray<NSString *> *logLines;
 
 @end
 
@@ -31,6 +35,7 @@
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
     [self applyLightAppearance];
+    self.logLines = [NSMutableArray array];
     [self buildWindow];
 
     __weak typeof(self) weakSelf = self;
@@ -63,6 +68,9 @@
                                                backing:NSBackingStoreBuffered
                                                  defer:NO];
     self.window.title = @"MacCentralOC BLE Central Demo";
+    if (@available(macOS 10.14, *)) {
+        self.window.appearance = [NSAppearance appearanceNamed:NSAppearanceNameAqua];
+    }
     [self.window center];
 
     NSView *contentView = self.window.contentView;
@@ -80,12 +88,14 @@
     NSStackView *gattControls = [self buildGattControls];
     NSStackView *ruleControls = [self buildRuleControls];
     NSScrollView *logScrollView = [self buildLogView];
+    self.clearLogButton = [self buttonWithTitle:@"Clear Logs" action:@selector(clearLogs:)];
 
     [contentView addSubview:titleLabel];
     [contentView addSubview:infoLabel];
     [contentView addSubview:topControls];
     [contentView addSubview:gattControls];
     [contentView addSubview:ruleControls];
+    [contentView addSubview:self.clearLogButton];
     [contentView addSubview:logScrollView];
 
     [NSLayoutConstraint activateConstraints:@[
@@ -109,7 +119,10 @@
         [ruleControls.leadingAnchor constraintEqualToAnchor:gattControls.leadingAnchor],
         [ruleControls.trailingAnchor constraintLessThanOrEqualToAnchor:gattControls.trailingAnchor],
 
-        [logScrollView.topAnchor constraintEqualToAnchor:ruleControls.bottomAnchor constant:16],
+        [self.clearLogButton.topAnchor constraintEqualToAnchor:ruleControls.bottomAnchor constant:12],
+        [self.clearLogButton.leadingAnchor constraintEqualToAnchor:ruleControls.leadingAnchor],
+
+        [logScrollView.topAnchor constraintEqualToAnchor:self.clearLogButton.bottomAnchor constant:8],
         [logScrollView.leadingAnchor constraintEqualToAnchor:contentView.leadingAnchor constant:20],
         [logScrollView.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor constant:-20],
         [logScrollView.bottomAnchor constraintEqualToAnchor:contentView.bottomAnchor constant:-20],
@@ -375,19 +388,39 @@
         NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
         formatter.dateFormat = @"HH:mm:ss";
         NSString *line = [NSString stringWithFormat:@"[%@] %@\n", [formatter stringFromDate:NSDate.date], message];
-
-        NSDictionary *attributes = @{
-            NSFontAttributeName: self.logTextView.font ?: [NSFont monospacedSystemFontOfSize:12 weight:NSFontWeightRegular],
-            NSForegroundColorAttributeName: NSColor.blackColor,
-        };
-        NSAttributedString *chunk = [[NSAttributedString alloc] initWithString:line attributes:attributes];
-        [self.logTextView.textStorage appendAttributedString:chunk];
-
-        NSUInteger length = self.logTextView.textStorage.length;
-        if (length > 0) {
-            [self.logTextView scrollRangeToVisible:NSMakeRange(length - 1, 1)];
-        }
+        [self.logLines addObject:line];
+        [self trimLogLinesIfNeeded];
+        [self renderLogLines];
     });
+}
+
+- (void)clearLogs:(id)sender {
+    [self.logLines removeAllObjects];
+    [self renderLogLines];
+}
+
+- (void)trimLogLinesIfNeeded {
+    while (self.logLines.count > kMaxLogLineCount) {
+        [self.logLines removeObjectAtIndex:0];
+    }
+}
+
+- (void)renderLogLines {
+    if (!self.logTextView) {
+        return;
+    }
+    NSString *text = [self.logLines componentsJoinedByString:@""];
+    NSDictionary *attributes = @{
+        NSFontAttributeName: self.logTextView.font ?: [NSFont monospacedSystemFontOfSize:12 weight:NSFontWeightRegular],
+        NSForegroundColorAttributeName: NSColor.blackColor,
+    };
+    NSAttributedString *content = [[NSAttributedString alloc] initWithString:text attributes:attributes];
+    [self.logTextView.textStorage setAttributedString:content];
+
+    NSUInteger length = self.logTextView.textStorage.length;
+    if (length > 0) {
+        [self.logTextView scrollRangeToVisible:NSMakeRange(length - 1, 1)];
+    }
 }
 
 @end

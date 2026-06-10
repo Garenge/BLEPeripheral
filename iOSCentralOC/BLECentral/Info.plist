@@ -24,6 +24,8 @@
 	<string>This app scans and connects to the Mac BLE peripheral demo for development testing.</string>
 	<key>UILaunchScreen</key>
 	<dict/>
+	<key>UIUserInterfaceStyle</key>
+	<string>Light</string>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
 		<string>bluetooth-le</string>

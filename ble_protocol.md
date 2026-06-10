@@ -22,6 +22,18 @@ GATT 特征 **FFF1** 当前属性：`read` + `write` + `writeWithoutResponse` + 
 
 三方调试 App：对 FFF1 发数据时选 **Write**（不要只发 Write No Response，除非明确做 fire-and-forget）；并 **打开 Notify** 才能实时看到 Mac 的 JSON 回复。写入非协议 payload 会进入 legacy `00 AA + 原始字节` 回显模式。
 
+## Single-Client Rule / 单客户端策略
+
+Mac Peripheral 当前只允许一个 Central 占用业务会话：
+
+1. 空闲时广播 `MacBLE-Demo` 和 Service `FFF0`。
+2. 第一个可识别的 Central 访问 `FFF1` 后成为 owner；触发点包括 Read、Write、Notify 订阅，first-party clients 连接后会立即开启 Notify 并 Pair。
+3. owner 建立后 Peripheral 停止广播，所以第二个客户端通常扫描不到该外设。
+4. 如果第二个客户端来自缓存扫描结果、或已经提前连上，继续 Read/Write `FFF1` 会被外设按 ATT 权限错误拒绝；日志会出现 `REJECTED — occupied by ...`。
+5. owner 取消 Notify 后释放占用，Peripheral 恢复广播；外设 App `stop` 也会释放占用。
+
+移动端产品逻辑应把「扫描不到」视为空闲外设不存在或已被占用，不要无限重试；被 ATT 拒绝时提示设备正被其他客户端使用。macOS `CBPeripheralManager` 可能在 Read/Write 回调中不给出 `request.central`，这种来源无法严格归属，外设会记录 `central=nil` 并按当前 owner session 处理。
+
 ## Security / Session Rule
 
 This is a learning/demo security layer, not production cryptography.

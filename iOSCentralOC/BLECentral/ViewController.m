@@ -1,5 +1,7 @@
 #import "ViewController.h"
 
+static NSUInteger const kMaxLogLineCount = 300;
+
 @interface ViewController () <UITableViewDataSource, UITableViewDelegate>
 
 @property (nonatomic, strong) BLECentralController *centralController;
@@ -10,6 +12,7 @@
 @property (nonatomic, strong) UILabel *statusLabel;
 @property (nonatomic, strong) UISegmentedControl *ruleModeControl;
 @property (nonatomic, strong) UIButton *demoFlowButton;
+@property (nonatomic, strong) NSMutableArray<NSString *> *logLines;
 
 @end
 
@@ -27,6 +30,7 @@
     [super viewDidLoad];
     self.title = @"BLE Central";
     self.view.backgroundColor = [UIColor systemBackgroundColor];
+    self.logLines = [NSMutableArray array];
     [self buildUI];
     __weak typeof(self) weakSelf = self;
     self.centralController.discoveryHandler = ^{
@@ -80,6 +84,10 @@
         self.demoFlowButton,
     ]];
 
+    UIStackView *logButtons = [self buttonRow:@[
+        [self makeButton:@"Clear Logs" action:@selector(clearLogsTapped)],
+    ]];
+
     self.pairCodeField = [[UITextField alloc] init];
     self.pairCodeField.placeholder = @"Pair code";
     self.pairCodeField.borderStyle = UITextBorderStyleRoundedRect;
@@ -114,6 +122,7 @@
         advancedButtons,
         self.ruleModeControl,
         dataButtons,
+        logButtons,
         self.logTextView,
     ]];
     stack.axis = UILayoutConstraintAxisVertical;
@@ -167,11 +176,23 @@
 
 - (void)appendLogLine:(NSString *)line {
     dispatch_async(dispatch_get_main_queue(), ^{
-        self.logTextView.text = [self.logTextView.text stringByAppendingString:line];
-        NSRange end = NSMakeRange(self.logTextView.text.length, 0);
-        [self.logTextView scrollRangeToVisible:end];
+        [self.logLines addObject:line];
+        [self trimLogLinesIfNeeded];
+        [self renderLogLines];
     });
     [self refreshStatus];
+}
+
+- (void)trimLogLinesIfNeeded {
+    while (self.logLines.count > kMaxLogLineCount) {
+        [self.logLines removeObjectAtIndex:0];
+    }
+}
+
+- (void)renderLogLines {
+    self.logTextView.text = [self.logLines componentsJoinedByString:@""];
+    NSRange end = NSMakeRange(self.logTextView.text.length, 0);
+    [self.logTextView scrollRangeToVisible:end];
 }
 
 #pragma mark - Actions
@@ -248,6 +269,11 @@
 
 - (void)demoFlowTapped {
     [self.centralController runDemoFlow];
+}
+
+- (void)clearLogsTapped {
+    [self.logLines removeAllObjects];
+    [self renderLogLines];
 }
 
 - (nullable NSString *)eventRuleModeFromCommandText:(NSString *)text {

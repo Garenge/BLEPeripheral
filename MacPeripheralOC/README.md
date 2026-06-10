@@ -23,6 +23,7 @@ macOS app that advertises `MacBLE-Demo` and exposes one GATT service for iPhone 
 | 写入 | JSON 协议请求 → 响应写入特征值；若已订阅则 **定向 notify 推送响应**；非协议 payload 走 legacy `00 AA` 回显 |
 | 长 Notify | 超过 Central `maximumUpdateValueLength` 时自动发送 JSON `op=chunk` 分片 |
 | 安全规则 | `pair` code `135790` → session token；`echo`/`telemetry`/`command` 需携带 token |
+| 单客户端策略 | 首个可识别 Central 读/写/订阅 FFF1 后占用外设；占用期间停止广播并拒绝其他已知 Central |
 | 能力发现 | `getInfo` 无需 token，返回 `operations`、`commands`、`events`、`eventRules`、`security`、`transport` |
 | 事件规则 | `setEventRule` 可切换 `normal`、`quiet`、`burst`，作用域为当前 Central session |
 
@@ -34,10 +35,23 @@ macOS app that advertises `MacBLE-Demo` and exposes one GATT service for iPhone 
 
 - Mac 作为 **Peripheral**，不会主动在 N 秒后踢掉 iPhone。
 - 连接/断开由 **Central（iPhone）** 或系统蓝牙栈决定：用户在 App 里 Disconnect、关蓝牙、走远等。
-- **取消订阅 notify** 只会停止 Mac 上 2 秒一次的 `tick` 推送；**不等于断开 BLE 连接**（链路可能仍连着，直到 Central 真正 disconnect）。
-- 调用 `stop`（若以后加 UI）会停广播并 `removeAllServices`，已连接端会异常，但当前启动后一直广播，无 idle 断连。
+- **取消订阅 notify** 会释放单客户端占用并恢复广播；但它**不等于断开 BLE 连接**（链路可能仍连着，直到 Central 真正 disconnect）。
+- 调用 `stop`（若以后加 UI）会停广播、释放占用并 `removeAllServices`，已连接端会异常；当前没有 idle 断连计时器。
 
 若需要「空闲 N 秒自动断连」，属于尚未实现的功能，需在 Peripheral 侧配合 Central 行为或文档约定另行开发。
+
+## 单客户端策略
+
+Mac Peripheral 当前按「同一时间只服务一个 Central」运行：
+
+- 空闲时正常广播 `MacBLE-Demo` / Service `FFF0`。
+- 第一个带 `CBCentral.identifier` 的 Central 访问 `FFF1` 时占用外设；触发点包括 Read、Write、Notify 订阅，first-party 客户端连接后会自动 Notify + Pair。
+- 占用后 Mac 立即停止广播，普通扫描通常不再发现该外设。
+- 已经缓存扫描结果或已经连接上的第二个 Central 若继续访问 `FFF1`，会在 Read/Write 阶段收到 `CBATTErrorInsufficientAuthorization`，日志显示 `REJECTED — occupied by ...`。
+- 占用 Central 取消 Notify 时释放占用并恢复广播；App `stop` 也会释放所有占用状态。
+- 调试时若客户端没有正常取消 Notify，可点窗口里的 **Release Client** 手动释放占用并恢复广播。
+
+限制说明：macOS `CBPeripheralManager` 没有可靠的「Central 已连接」回调，也可能在 Read/Write 请求里不暴露 `request.central`。因此外设以首次可识别 GATT 行为作为占用点；无法识别来源的 Read/Write 会记录 `central=nil`，并按当前占用 session 处理，避免误伤真实占用客户端。
 
 ## 日志标签
 
@@ -61,10 +75,11 @@ Notify 已改为 per-Central 队列：Notify 关闭或 CoreBluetooth back-pressu
 ## iPhone 三方 App 扫不到 Mac？
 
 1. Mac 端 App **保持前台运行**，日志里有 `Advertising active (isAdvertising=YES)`。
-2. 三方 App 用 **扫描全部设备**（不要只按自定义名称过滤；名称可能是 `MacBLE-Demo` 或暂时显示 Unknown）。
-3. 广播包只有约 **28 字节**：已改为 **16 位 FFF0 + 设备名**，避免 128 位 UUID 把名称挤进 overflow 导致通用扫描看不到。
-4. 连接后在 App 里打开服务 **FFF0**（完整 UUID 与 GATT 一致），特征 **FFF1**。
-5. 系统设置 → 蓝牙：Mac 与 iPhone 均开启；Mac 隐私 → 蓝牙允许本 App。
+2. 若已有客户端占用，Mac 会停止广播；第二个客户端扫不到是预期行为，先让 owner 取消 Notify 或退出。
+3. 三方 App 用 **扫描全部设备**（不要只按自定义名称过滤；名称可能是 `MacBLE-Demo` 或暂时显示 Unknown）。
+4. 广播包只有约 **28 字节**：已改为 **16 位 FFF0 + 设备名**，避免 128 位 UUID 把名称挤进 overflow 导致通用扫描看不到。
+5. 连接后在 App 里打开服务 **FFF0**（完整 UUID 与 GATT 一致），特征 **FFF1**。
+6. 系统设置 → 蓝牙：Mac 与 iPhone 均开启；Mac 隐私 → 蓝牙允许本 App。
 
 ## 连接后没有日志？
 

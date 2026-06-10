@@ -83,6 +83,8 @@ class BleCentralController extends ChangeNotifier {
   final Map<String, Timer> _requestTimeouts = {};
   final List<String> logs = [];
   StreamSubscription<List<int>>? _valueSubscription;
+  bool _notifyRequestInFlight = false;
+  bool _requestedNotifyEnabled = false;
 
   BluetoothAdapterState _adapterState = FlutterBluePlus.adapterStateNow;
   BluetoothDevice? connectedDevice;
@@ -240,7 +242,7 @@ class BleCentralController extends ChangeNotifier {
 
   void clearLogs() {
     logs.clear();
-    _log('SYS logs cleared');
+    notifyListeners();
   }
 
   Future<void> runDemoFlow() async {
@@ -311,10 +313,24 @@ class BleCentralController extends ChangeNotifier {
       _log('SYS notify skipped: characteristic missing');
       return;
     }
-    await characteristic.setNotifyValue(enabled);
-    notifyEnabled = enabled;
-    _log(enabled ? 'LINK notify ON' : 'LINK notify OFF');
-    notifyListeners();
+    if (_notifyRequestInFlight && _requestedNotifyEnabled == enabled) {
+      return;
+    }
+    if (!_notifyRequestInFlight && notifyEnabled == enabled) {
+      return;
+    }
+
+    _notifyRequestInFlight = true;
+    _requestedNotifyEnabled = enabled;
+    try {
+      await characteristic.setNotifyValue(enabled);
+      notifyEnabled = enabled;
+      _log(enabled ? 'LINK notify ON' : 'LINK notify OFF');
+    } catch (error) {
+      _log('LINK notify ${enabled ? "ON" : "OFF"} failed: $error');
+    } finally {
+      _notifyRequestInFlight = false;
+    }
   }
 
   Future<void> _demoDelay() {
@@ -465,6 +481,8 @@ class BleCentralController extends ChangeNotifier {
     connectedDevice = null;
     demoCharacteristic = null;
     notifyEnabled = false;
+    _notifyRequestInFlight = false;
+    _requestedNotifyEnabled = false;
     sessionToken = null;
     capabilitySummary = null;
     eventRuleMode = 'normal';

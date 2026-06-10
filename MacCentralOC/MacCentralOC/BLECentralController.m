@@ -33,6 +33,8 @@ static NSUInteger const kMaxChunkBufferedBytes = 64 * 1024;
 @property (nonatomic) BOOL scanning;
 @property (nonatomic) BOOL connected;
 @property (nonatomic) BOOL notifyEnabled;
+@property (nonatomic) BOOL notifyRequestInFlight;
+@property (nonatomic) BOOL requestedNotifyEnabled;
 @property (nonatomic, getter=isDemoFlowRunning) BOOL demoFlowRunning;
 @property (nonatomic) NSUInteger protocolSequence;
 @property (nonatomic) NSUInteger demoFlowGeneration;
@@ -151,6 +153,16 @@ static NSUInteger const kMaxChunkBufferedBytes = 64 * 1024;
         [self logEvent:@"LINK" detail:@"notify skipped: characteristic missing"];
         return;
     }
+    if (self.notifyRequestInFlight && self.requestedNotifyEnabled == enabled) {
+        return;
+    }
+    if (!self.notifyRequestInFlight && self.demoCharacteristic.isNotifying == enabled) {
+        self.notifyEnabled = enabled;
+        [self notifyStateChanged];
+        return;
+    }
+    self.notifyRequestInFlight = YES;
+    self.requestedNotifyEnabled = enabled;
     [self.connectedPeripheral setNotifyValue:enabled forCharacteristic:self.demoCharacteristic];
     [self logEvent:@"LINK" detail:enabled ? @"notify ON requested" : @"notify OFF requested"];
 }
@@ -423,12 +435,17 @@ static NSUInteger const kMaxChunkBufferedBytes = 64 * 1024;
 }
 
 - (void)peripheral:(CBPeripheral *)peripheral didUpdateNotificationStateForCharacteristic:(CBCharacteristic *)characteristic error:(NSError *)error {
+    self.notifyRequestInFlight = NO;
     if (error) {
         [self logEvent:@"LINK" detail:[NSString stringWithFormat:@"notify state failed: %@", error.localizedDescription]];
+        [self notifyStateChanged];
         return;
     }
+    BOOL previousNotifyEnabled = self.notifyEnabled;
     self.notifyEnabled = characteristic.isNotifying;
-    [self logEvent:@"LINK" detail:characteristic.isNotifying ? @"notify ON" : @"notify OFF"];
+    if (previousNotifyEnabled != self.notifyEnabled) {
+        [self logEvent:@"LINK" detail:characteristic.isNotifying ? @"notify ON" : @"notify OFF"];
+    }
     [self notifyStateChanged];
 }
 
@@ -708,6 +725,8 @@ static NSUInteger const kMaxChunkBufferedBytes = 64 * 1024;
     self.demoCharacteristic = nil;
     self.connected = NO;
     self.notifyEnabled = NO;
+    self.notifyRequestInFlight = NO;
+    self.requestedNotifyEnabled = NO;
     self.sessionToken = nil;
     self.eventRuleMode = kEventRuleModeNormal;
     [self clearChunkBuffers];

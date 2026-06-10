@@ -26,7 +26,19 @@
 - 外设优先通过 Notify 推送回复；未开启 Notify 时，回复会保存在 Characteristic 当前值中，可通过 Read 读取。
 - 协议写入推荐使用 write with response；外设也声明支持 write without response。
 
-## 2. 数据格式
+## 2. 单客户端策略
+
+Mac Peripheral 当前只允许一个 Central 占用业务会话：
+
+1. 空闲时广播 `MacBLE-Demo` 和 Service `FFF0`。
+2. 第一个可识别 Central 访问 `FFF1` 后成为 owner；触发点包括 Read、Write、Notify 订阅。Flutter / iOS / Android 产品端连接后应立即开启 Notify 并 Pair，让占用尽早成立。
+3. owner 建立后 Peripheral 停止广播，所以第二个客户端通常扫描不到该外设。
+4. 如果第二个客户端来自缓存扫描结果、或已经提前连上，继续 Read/Write `FFF1` 会被外设按 ATT 权限错误拒绝；产品端应提示设备正被其他客户端使用。
+5. owner 取消 Notify 后释放占用，Peripheral 恢复广播；外设 App `stop` 也会释放占用。
+
+限制说明：macOS `CBPeripheralManager` 没有可靠的「Central 已连接」回调，也可能在 Read/Write 请求里不暴露 `request.central`。因此外设以首次可识别 GATT 行为作为占用点；无法识别来源的 Read/Write 会记录 `central=nil`，并按当前 owner session 处理。
+
+## 3. 数据格式
 
 协议 payload 是 UTF-8 JSON object。请求 envelope：
 
@@ -82,7 +94,7 @@
 
 Token 可以放在 envelope 顶层 `token`，也可以放在 `body.token`。移动端应优先使用顶层 `token`。
 
-## 3. Pair 和安全规则
+## 4. Pair 和安全规则
 
 默认 Pair code：
 
@@ -149,7 +161,7 @@ Pair code 不匹配时返回：
 
 未配对调用受保护操作时返回 `unauthorized`。
 
-## 4. Operations
+## 5. Operations
 
 ### `ping`
 
@@ -325,7 +337,7 @@ Pair code 不匹配时返回：
 
 非法 mode 返回 `invalid_body`。
 
-## 5. Events
+## 6. Events
 
 事件通过 Notify 推送，envelope `op` 为 `event`：
 
@@ -364,7 +376,7 @@ Pair code 不匹配时返回：
 - `quiet`: 抑制普通 write 事件，但保留 paired 和 ruleChanged。
 - `burst`: 执行 `sample` 时额外推送 `command.sample.detail`。
 
-## 6. Chunk 分片
+## 7. Chunk 分片
 
 当 Notify payload 大于当前 Central 的 `maximumUpdateValueLength` 时，外设会将原始 payload 分成多个 `chunk` envelope：
 
@@ -407,7 +419,7 @@ Pair code 不匹配时返回：
 - 总缓存最多 64 KiB。
 - 收齐后按 `index` 顺序拼接原始 payload，再重新进入协议解析流程。
 
-## 7. Legacy Raw Echo
+## 8. Legacy Raw Echo
 
 如果写入数据不是合法协议 envelope，外设进入 legacy echo 模式：
 
@@ -423,7 +435,7 @@ response = 0x00 0xAA + original_payload
 
 移动端应把该模式作为调试/兼容能力，不作为主要产品流程。
 
-## 8. 错误码
+## 9. 错误码
 
 | Code | Meaning |
 | --- | --- |
@@ -434,7 +446,7 @@ response = 0x00 0xAA + original_payload
 | `unauthorized` | 受保护 operation 未携带有效 token |
 | `pairing_failed` | Pair code 不匹配 |
 
-## 9. 推荐移动端流程
+## 10. 推荐移动端流程
 
 1. 扫描 Service `FFF0`。
 2. 展示 `MacBLE-Demo` 或符合 Service 过滤的候选设备。
@@ -442,10 +454,10 @@ response = 0x00 0xAA + original_payload
 4. 发现 Service `FFF0` 和 Characteristic `FFF1`。
 5. 监听 `onValueReceived`。
 6. 开启 Notify。
-7. Read 一次当前值。
-8. 发送 `pair`。
+7. 发送 `pair`。
 9. 捕获 token。
-10. 发送 `getInfo`。
-11. 根据 `info` 渲染能力、命令和事件规则。
-12. 执行 `ping`、`echo`、`telemetry`、`command` 等产品功能。
-13. 将 raw echo、Read、Notify On/Off、协议日志放入高级调试入口。
+10. Read 一次当前值或等待 Notify 响应。
+11. 发送 `getInfo`。
+12. 根据 `info` 渲染能力、命令和事件规则。
+13. 执行 `ping`、`echo`、`telemetry`、`command` 等产品功能。
+14. 将 raw echo、Read、Notify On/Off、协议日志放入高级调试入口。

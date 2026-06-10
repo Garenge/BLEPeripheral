@@ -21,6 +21,10 @@
     UINavigationController *navigationController = [[UINavigationController alloc] initWithRootViewController:self.rootViewController];
 
     self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
+    if (@available(iOS 13.0, *)) {
+        self.window.overrideUserInterfaceStyle = UIUserInterfaceStyleLight;
+        navigationController.overrideUserInterfaceStyle = UIUserInterfaceStyleLight;
+    }
     self.window.rootViewController = navigationController;
     [self.window makeKeyAndVisible];
 

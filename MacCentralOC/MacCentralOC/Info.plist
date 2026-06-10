@@ -24,6 +24,8 @@
 	<string>Scan and connect to the MacBLE-Demo peripheral for BLE learning.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>Scan and connect to the MacBLE-Demo peripheral for BLE learning.</string>
+	<key>NSRequiresAquaSystemAppearance</key>
+	<true/>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>

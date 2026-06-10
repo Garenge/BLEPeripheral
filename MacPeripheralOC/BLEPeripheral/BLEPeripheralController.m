@@ -42,6 +42,7 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
 @property (nonatomic, strong) NSMutableData *currentValue;
 @property (nonatomic) BOOL hasSubscribers;
 @property (nonatomic) BOOL servicesPublished;
+@property (nonatomic, strong, nullable) NSUUID *activeCentralIdentifier;
 @property (nonatomic, strong) NSMutableDictionary<NSUUID *, BLETrackedCentral *> *trackedCentrals;
 @property (nonatomic) NSUInteger notifyStreamCounter;
 
@@ -73,7 +74,22 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
     [self notifyAllCentralsDisconnectedReason:@"peripheral stopped"];
     [self.peripheralManager stopAdvertising];
     [self.peripheralManager removeAllServices];
+    self.activeCentralIdentifier = nil;
     [self logEvent:@"SYS" detail:@"Peripheral stopped, advertising and GATT cleared"];
+}
+
+- (void)releaseActiveClient {
+    if (!self.activeCentralIdentifier) {
+        [self logEvent:@"LINK" detail:@"release requested: no active single-client owner"];
+        [self resumeAdvertisingIfAvailableWithReason:@"manual release with no owner"];
+        return;
+    }
+    NSString *owner = self.activeCentralIdentifier.UUIDString;
+    [self.trackedCentrals removeObjectForKey:self.activeCentralIdentifier];
+    self.activeCentralIdentifier = nil;
+    self.hasSubscribers = [self anyCentralNotifyEnabled];
+    [self logEvent:@"LINK-" detail:[NSString stringWithFormat:@"single-client manually released: central=%@", owner]];
+    [self resumeAdvertisingIfAvailableWithReason:@"manual single-client release"];
 }
 
 - (void)setupServiceAndAdvertise {
@@ -108,6 +124,10 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
 }
 
 - (void)startAdvertising {
+    if (self.activeCentralIdentifier) {
+        [self logEvent:@"SYS" detail:[NSString stringWithFormat:@"Advertising skipped: occupied by %@", self.activeCentralIdentifier.UUIDString]];
+        return;
+    }
     if (self.peripheralManager.isAdvertising) {
         [self.peripheralManager stopAdvertising];
         [self logEvent:@"SYS" detail:@"Stopped previous advertising before restart"];
@@ -128,6 +148,10 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
 }
 
 - (void)startAdvertisingNameOnly {
+    if (self.activeCentralIdentifier) {
+        [self logEvent:@"SYS" detail:[NSString stringWithFormat:@"Name-only advertising skipped: occupied by %@", self.activeCentralIdentifier.UUIDString]];
+        return;
+    }
     if (self.peripheralManager.isAdvertising) {
         [self.peripheralManager stopAdvertising];
     }
@@ -195,12 +219,13 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
                                                                  sequence:tracked.eventCount
                                                                   session:tracked.sessionID
                                                                      body:eventBody.copy];
+    CBCentral *deliveryCentral = [self deliveryCentralForCentral:central tracked:tracked];
     [self enqueueNotifyPayload:eventData
-                    forCentral:central
+                    forCentral:deliveryCentral
                         tracked:tracked
                         channel:@"notify/event"
                           extra:[NSString stringWithFormat:@"type=%@", type]];
-    [self flushNotifyQueueForCentral:central tracked:tracked peripheral:peripheral];
+    [self flushNotifyQueueForCentral:deliveryCentral tracked:tracked peripheral:peripheral];
 }
 
 - (void)applyProtocolResult:(BLEProtocolHandlerResult *)protocolResult
@@ -331,9 +356,10 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
         toCentral:(nullable CBCentral *)central
        peripheral:(CBPeripheralManager *)peripheral {
     BLETrackedCentral *tracked = [self trackedCentralForCentral:central createIfNeeded:YES];
+    CBCentral *deliveryCentral = [self deliveryCentralForCentral:central tracked:tracked];
     if (!tracked.notifyEnabled) {
         [self enqueueNotifyPayload:payload
-                        forCentral:central
+                        forCentral:deliveryCentral
                             tracked:tracked
                             channel:@"notify/reply"
                               extra:@"notify OFF; queued for subscribe"];
@@ -342,11 +368,11 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
     }
 
     [self enqueueNotifyPayload:payload
-                    forCentral:central
+                    forCentral:deliveryCentral
                         tracked:tracked
                         channel:@"notify/reply"
                           extra:@"targeted"];
-    return [self flushNotifyQueueForCentral:central tracked:tracked peripheral:peripheral];
+    return [self flushNotifyQueueForCentral:deliveryCentral tracked:tracked peripheral:peripheral];
 }
 
 - (void)storeReplyAndAutoPush:(NSData *)responseData
@@ -382,6 +408,11 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
                          peripheral:(CBPeripheralManager *)peripheral {
     BOOL sentAny = NO;
     while (tracked.notifyEnabled && tracked.notifyQueue.count > 0) {
+        if (self.activeCentralIdentifier && !central) {
+            [self logEvent:@"TX" detail:[NSString stringWithFormat:@"notify flush skipped: session=%@ no CBCentral object for occupied single-client session",
+                                          tracked.sessionID]];
+            return sentAny;
+        }
         NSData *packet = tracked.notifyQueue.firstObject;
         BOOL didSend = [peripheral updateValue:packet
                              forCharacteristic:self.demoCharacteristic
@@ -564,6 +595,13 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
     return tracked.central;
 }
 
+- (nullable CBCentral *)deliveryCentralForCentral:(nullable CBCentral *)central tracked:(BLETrackedCentral *)tracked {
+    if (central) {
+        return central;
+    }
+    return tracked.central;
+}
+
 - (NSString *)shortSessionIDForUUID:(NSUUID *)uuid {
     NSString *raw = uuid.UUIDString ?: kUnknownCentralUUIDString;
     NSString *compact = [[raw stringByReplacingOccurrencesOfString:@"-" withString:@""] lowercaseString];
@@ -574,6 +612,9 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
 - (NSUUID *)uuidForCentral:(nullable CBCentral *)central {
     if (central.identifier) {
         return central.identifier;
+    }
+    if (self.activeCentralIdentifier) {
+        return self.activeCentralIdentifier;
     }
     return [[NSUUID alloc] initWithUUIDString:kUnknownCentralUUIDString];
 }
@@ -592,6 +633,90 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
         return NO;
     }
     return message[BLEProtocolKeyVersion] != nil || message[BLEProtocolKeyOperation] != nil;
+}
+
+- (BOOL)isSingleClientAllowedForCentral:(nullable CBCentral *)central action:(NSString *)action {
+    if (!self.activeCentralIdentifier) {
+        return YES;
+    }
+    if (!central.identifier) {
+        [self logEvent:@"LINK" detail:[NSString stringWithFormat:@"central=nil allowed for %@ because CoreBluetooth did not expose requester; owner=%@",
+                                       action,
+                                       self.activeCentralIdentifier.UUIDString]];
+        return YES;
+    }
+    if ([central.identifier isEqual:self.activeCentralIdentifier]) {
+        return YES;
+    }
+    [self logEvent:@"LINK" detail:[NSString stringWithFormat:@"central=%@ | %@ REJECTED — occupied by %@",
+                                   [self centralTag:central],
+                                   action,
+                                   self.activeCentralIdentifier.UUIDString]];
+    return NO;
+}
+
+- (void)claimSingleClientIfNeededForCentral:(nullable CBCentral *)central reason:(NSString *)reason {
+    if (!central.identifier) {
+        [self logEvent:@"LINK" detail:[NSString stringWithFormat:@"single-client claim skipped: central=nil reason=%@", reason]];
+        return;
+    }
+    NSUUID *uuid = central.identifier;
+    if (!self.activeCentralIdentifier) {
+        self.activeCentralIdentifier = uuid;
+        BLETrackedCentral *tracked = [self trackedCentralForUUID:uuid createIfNeeded:YES];
+        [self logEvent:@"LINK+" detail:[NSString stringWithFormat:@"single-client occupied: central=%@ session=%@ reason=%@",
+                                        [self centralTag:central],
+                                        tracked.sessionID,
+                                        reason]];
+        if (self.peripheralManager.isAdvertising) {
+            [self.peripheralManager stopAdvertising];
+            [self logEvent:@"SYS" detail:@"Advertising stopped: single-client session active"];
+        }
+        return;
+    }
+    if (![self.activeCentralIdentifier isEqual:uuid]) {
+        [self logEvent:@"LINK" detail:[NSString stringWithFormat:@"single-client claim ignored: central=%@ reason=%@ owner=%@",
+                                       [self centralTag:central],
+                                       reason,
+                                       self.activeCentralIdentifier.UUIDString]];
+    }
+}
+
+- (void)releaseSingleClientIfNeededForCentral:(nullable CBCentral *)central reason:(NSString *)reason {
+    if (!self.activeCentralIdentifier) {
+        return;
+    }
+    if (!central.identifier) {
+        [self logEvent:@"LINK" detail:[NSString stringWithFormat:@"single-client release skipped: central=nil reason=%@ owner=%@",
+                                       reason,
+                                       self.activeCentralIdentifier.UUIDString]];
+        return;
+    }
+    NSUUID *uuid = central.identifier;
+    if (![uuid isEqual:self.activeCentralIdentifier]) {
+        return;
+    }
+    [self logEvent:@"LINK-" detail:[NSString stringWithFormat:@"single-client released: central=%@ reason=%@",
+                                    [self centralTag:central],
+                                    reason]];
+    [self.trackedCentrals removeObjectForKey:uuid];
+    self.activeCentralIdentifier = nil;
+    self.hasSubscribers = [self anyCentralNotifyEnabled];
+    [self resumeAdvertisingIfAvailableWithReason:@"single-client released"];
+}
+
+- (void)resumeAdvertisingIfAvailableWithReason:(NSString *)reason {
+    if (self.activeCentralIdentifier) {
+        return;
+    }
+    if (!self.servicesPublished || self.peripheralManager.state != CBManagerStatePoweredOn) {
+        return;
+    }
+    if (self.peripheralManager.isAdvertising) {
+        return;
+    }
+    [self logEvent:@"SYS" detail:[NSString stringWithFormat:@"Advertising resume: %@", reason]];
+    [self startAdvertising];
 }
 
 - (NSString *)hexStringForData:(NSData *)data maxBytes:(NSUInteger)maxBytes {
@@ -687,6 +812,7 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
     }
     [self.trackedCentrals removeAllObjects];
     self.hasSubscribers = NO;
+    self.activeCentralIdentifier = nil;
 }
 
 - (BOOL)anyCentralNotifyEnabled {
@@ -749,6 +875,7 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
     [self log:[NSString stringWithFormat:@"Characteristic: %@ (16-bit FFF1)", kDemoCharacteristicUUIDString]];
     [self log:@"Characteristic properties: read, write, writeWithoutResponse, notify"];
     [self log:[NSString stringWithFormat:@"Security rule: pair code %@ -> session token; protected ops include echo/telemetry/command", BLEProtocolDefaultPairCode]];
+    [self log:@"Single-client rule: first identifiable Read/Write/Notify on FFF1 occupies the peripheral and stops advertising"];
     [self log:@"Message rule: JSON protocol replies over notify/read; non-protocol payload keeps 0x00 0xAA echo"];
     [self log:@"Event rule modes: normal, quiet, burst; command setEventRule switches a session"];
     [self log:@"Auto delivery: Notify pushes reply + session events after writes (phone must enable Notify on FFF1)"];
@@ -825,12 +952,19 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
         return;
     }
 
+    if (![self isSingleClientAllowedForCentral:central action:@"read/FFF1"]) {
+        [peripheral respondToRequest:request withResult:CBATTErrorInsufficientAuthorization];
+        return;
+    }
+
     if (request.offset > self.currentValue.length) {
         [self logEvent:@"RX" detail:[NSString stringWithFormat:@"central=%@ | read REJECTED invalid offset %lu",
                                        [self centralTag:central], (unsigned long)request.offset]];
         [peripheral respondToRequest:request withResult:CBATTErrorInvalidOffset];
         return;
     }
+
+    [self claimSingleClientIfNeededForCentral:central reason:@"read FFF1"];
 
     BLETrackedCentral *tracked = [self trackedCentralForCentral:central createIfNeeded:YES];
     tracked.readCount += 1;
@@ -861,6 +995,12 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
             continue;
         }
 
+        if (![self isSingleClientAllowedForCentral:central action:@"write/FFF1"]) {
+            [peripheral respondToRequest:request withResult:CBATTErrorInsufficientAuthorization];
+            continue;
+        }
+        [self claimSingleClientIfNeededForCentral:central reason:@"write FFF1"];
+
         BOOL supportsWriteWithResponse = (self.demoCharacteristic.properties & CBCharacteristicPropertyWrite) != 0;
         BOOL supportsWriteWithoutResponse = (self.demoCharacteristic.properties & CBCharacteristicPropertyWriteWithoutResponse) != 0;
         NSString *writeModeHint = [NSString stringWithFormat:@"char supports write=%@ writeNoResp=%@ (protocol: use write+notify)",
@@ -876,6 +1016,9 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
         NSData *outgoing = [self responseDataForIncoming:incoming central:central protocolResult:&protocolResult];
         if (protocolResult) {
             [self logEvent:@"TX" detail:[NSString stringWithFormat:@"protocol rule: %@", protocolResult.logSummary ?: @"response"]];
+            if (protocolResult.pairingSucceeded) {
+                [self claimSingleClientIfNeededForCentral:central reason:@"pair succeeded"];
+            }
         } else {
             [self logEvent:@"TX" detail:@"legacy echo rule: 00 AA + RX payload"];
         }
@@ -907,6 +1050,10 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
 
 - (void)peripheralManager:(CBPeripheralManager *)peripheral central:(CBCentral *)central didSubscribeToCharacteristic:(CBCharacteristic *)characteristic {
     [self logEvent:@"SYS" detail:[NSString stringWithFormat:@"didSubscribe FFF1 central=%@", [self centralTag:central]]];
+    if (![self isSingleClientAllowedForCentral:central action:@"notify/FFF1"]) {
+        return;
+    }
+    [self claimSingleClientIfNeededForCentral:central reason:@"notify subscribed"];
     [self logLinkNotifySubscribed:central];
     [self logEvent:@"SYS" detail:@"Notify ON — write replies will auto-push (no Read needed)"];
 
@@ -925,6 +1072,7 @@ static const uint8_t kEchoReplyPrefixBytes[] = { 0x00, 0xAA };
 
 - (void)peripheralManager:(CBPeripheralManager *)peripheral central:(CBCentral *)central didUnsubscribeFromCharacteristic:(CBCharacteristic *)characteristic {
     [self logLinkNotifyUnsubscribed:central];
+    [self releaseSingleClientIfNeededForCentral:central reason:@"notify unsubscribed"];
     // CoreBluetooth peripheral role has no explicit disconnect callback; link drop is inferred when Central leaves.
     [self logEvent:@"LINK" detail:[NSString stringWithFormat:@"central=%@ | if iPhone disconnected entirely, no further RX/TX until reconnect",
                                    [self centralTag:central]]];

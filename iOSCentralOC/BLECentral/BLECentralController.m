@@ -41,6 +41,8 @@ static NSUInteger const kMaxChunkBufferedBytes = 64 * 1024;
 @property (nonatomic) BOOL scanning;
 @property (nonatomic) BOOL connected;
 @property (nonatomic) BOOL notifying;
+@property (nonatomic) BOOL notifyRequestInFlight;
+@property (nonatomic) BOOL requestedNotifyEnabled;
 
 @end
 
@@ -159,6 +161,16 @@ static NSUInteger const kMaxChunkBufferedBytes = 64 * 1024;
         [self log:@"Subscribe skipped: not connected or characteristic missing."];
         return;
     }
+    if (self.notifyRequestInFlight && self.requestedNotifyEnabled == subscribe) {
+        return;
+    }
+    if (!self.notifyRequestInFlight && self.demoCharacteristic.isNotifying == subscribe) {
+        self.notifying = subscribe;
+        [self notifyStateChanged];
+        return;
+    }
+    self.notifyRequestInFlight = YES;
+    self.requestedNotifyEnabled = subscribe;
     [self.connectedPeripheral setNotifyValue:subscribe forCharacteristic:self.demoCharacteristic];
     [self log:subscribe ? @"Subscribing to notifications..." : @"Unsubscribing from notifications..."];
 }
@@ -320,6 +332,8 @@ static NSUInteger const kMaxChunkBufferedBytes = 64 * 1024;
     self.demoCharacteristic = nil;
     self.connected = NO;
     self.notifying = NO;
+    self.notifyRequestInFlight = NO;
+    self.requestedNotifyEnabled = NO;
     self.sessionToken = nil;
     self.eventRuleMode = kEventRuleModeNormal;
     [self clearChunkBuffers];
@@ -678,17 +692,20 @@ static NSUInteger const kMaxChunkBufferedBytes = 64 * 1024;
 }
 
 - (void)peripheral:(CBPeripheral *)peripheral didUpdateNotificationStateForCharacteristic:(CBCharacteristic *)characteristic error:(NSError *)error {
+    self.notifyRequestInFlight = NO;
     if (error) {
         [self log:[NSString stringWithFormat:@"Notify state failed: %@", error.localizedDescription]];
+        [self notifyStateChanged];
         return;
     }
+    BOOL wasNotifying = self.notifying;
     self.notifying = characteristic.isNotifying;
-    if (characteristic.isNotifying) {
+    if (characteristic.isNotifying && !wasNotifying) {
         [self log:@"Notifications enabled — protocol replies and events arrive by notify."];
         [self readCharacteristic];
         [self sendProtocolPairCode:BLEProtocolDefaultPairCode];
         [self sendProtocolGetInfo];
-    } else {
+    } else if (!characteristic.isNotifying && wasNotifying) {
         [self log:@"Notifications disabled."];
     }
     [self notifyStateChanged];

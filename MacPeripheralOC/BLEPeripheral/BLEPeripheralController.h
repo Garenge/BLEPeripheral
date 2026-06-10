@@ -9,6 +9,7 @@ typedef void (^BLEPeripheralLogHandler)(NSString *message);
 - (instancetype)initWithLogHandler:(BLEPeripheralLogHandler)logHandler;
 - (void)start;
 - (void)stop;
+- (void)releaseActiveClient;
 
 @end
 
